@@ -14,8 +14,6 @@ var (
 	reFullRef = regexp.MustCompile(`([a-zA-Z0-9_.-]+)/([a-zA-Z0-9_.-]+)#(\d+)`)
 	// Matches #123 (same-repo reference)
 	reLocalRef = regexp.MustCompile(`(?:^|\s)#(\d+)(?:\s|$|[,.)])`)
-	// Matches commit hashes (7+ hex chars)
-	reCommitHash = regexp.MustCompile(`\b([0-9a-f]{7,40})\b`)
 )
 
 // DetectFromCommit analyzes a commit message for cross-references.
