@@ -64,7 +64,7 @@ var (
 			Foreground(ColorSuccess)
 
 	StylePR = lipgloss.NewStyle().
-			Foreground(ColorPrimary)
+		Foreground(ColorPrimary)
 
 	StyleMerged = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#A855F7"))

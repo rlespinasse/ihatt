@@ -3,18 +3,18 @@ package tui
 import "github.com/charmbracelet/bubbles/key"
 
 type KeyMap struct {
-	Up       key.Binding
-	Down     key.Binding
-	Enter    key.Binding
-	Back     key.Binding
-	Tab      key.Binding
-	Search   key.Binding
-	Timeline key.Binding
+	Up        key.Binding
+	Down      key.Binding
+	Enter     key.Binding
+	Back      key.Binding
+	Tab       key.Binding
+	Search    key.Binding
+	Timeline  key.Binding
 	Dashboard key.Binding
-	Links    key.Binding
-	Refresh  key.Binding
-	Quit     key.Binding
-	Help     key.Binding
+	Links     key.Binding
+	Refresh   key.Binding
+	Quit      key.Binding
+	Help      key.Binding
 }
 
 var Keys = KeyMap{
