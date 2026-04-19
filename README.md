@@ -16,6 +16,32 @@ Everything stays on your machine: data lives in a single
 
 ## Installation
 
+### Homebrew
+
+```bash
+brew install rlespinasse/tap/ihatt
+```
+
+#### macOS Gatekeeper notice
+
+On macOS, you may see a warning: _"Apple is not able to verify that it is free from malware that could harm your Mac or compromise your privacy."_
+
+This is because the binary is ad-hoc signed but not notarized by Apple.
+
+> [!NOTE]
+> Apple notarization requires a paid Apple Developer account ($99/year). It consists of an automated malware scan — not a manual security review or code audit — and does not guarantee the software is safe. Open-source projects can be verified by reviewing the source code and build pipeline directly.
+
+To allow it to run, either:
+
+- **Via System Settings (UI):** Go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway** next to the blocked app message.
+- **Via terminal:**
+
+  ```bash
+  xattr -d com.apple.quarantine $(which ihatt)
+  ```
+
+### From source
+
 ```bash
 # from source (Go 1.24+)
 go install github.com/rlespinasse/ihatt@latest
@@ -24,6 +50,10 @@ go install github.com/rlespinasse/ihatt@latest
 just install        # go install with version baked in
 just build          # produces ./bin/ihatt
 ```
+
+### Binary releases
+
+Download pre-built binaries from the [Releases](https://github.com/rlespinasse/ihatt/releases) page. Available for Linux, macOS, and Windows (amd64/arm64).
 
 GitHub sync uses the [`gh`](https://cli.github.com/) credentials, so make sure
 you've run `gh auth login` if you plan to use `ihatt github sync`.
