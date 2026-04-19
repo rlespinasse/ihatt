@@ -1,0 +1,72 @@
+name: GoReleaser
+
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        description: "Run in snapshot mode (no publish)"
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run in snapshot mode (no publish)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Get latest tag
+        if: ${{ !inputs.dry_run }}
+        id: tag
+        run: |
+          git fetch --tags
+          TAG=$(git describe --tags --abbrev=0)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Check tag points to HEAD
+        if: ${{ !inputs.dry_run }}
+        id: check
+        run: |
+          TAG_SHA=$(git rev-parse "${{ steps.tag.outputs.tag }}")
+          HEAD_SHA=$(git rev-parse HEAD)
+          if [ "$TAG_SHA" = "$HEAD_SHA" ]; then
+            echo "match=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "match=false" >> "$GITHUB_OUTPUT"
+            echo "No new tag at HEAD, skipping GoReleaser"
+          fi
+
+      - name: Setup Go
+        if: inputs.dry_run || steps.check.outputs.match == 'true'
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install rcodesign
+        if: inputs.dry_run || steps.check.outputs.match == 'true'
+        env:
+          RCODESIGN_VERSION: "0.27.0"
+        run: |
+          curl -fsSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/apple-codesign-${RCODESIGN_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+            | tar xz -C /usr/local/bin --strip-components=1 --wildcards '*/rcodesign'
+
+      - name: Run GoReleaser
+        if: inputs.dry_run || steps.check.outputs.match == 'true'
+        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
+        with:
+          version: latest
+          args: ${{ inputs.dry_run && 'release --snapshot --clean' || 'release --clean' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

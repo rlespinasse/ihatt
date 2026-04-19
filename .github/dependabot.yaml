@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      all-github-actions:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 3
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      all-go-modules:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 3
