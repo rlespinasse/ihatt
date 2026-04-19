@@ -1,14 +1,14 @@
 module github.com/rlespinasse/ihatt
 
-go 1.24.7
+go 1.25.0
 
 require (
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250319133953-166f707985bc
-	github.com/cli/go-gh/v2 v2.12.0
-	github.com/go-git/go-git/v5 v5.17.0
+	github.com/cli/go-gh/v2 v2.13.0
+	github.com/go-git/go-git/v5 v5.17.2
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	go.etcd.io/bbolt v1.4.3
@@ -28,7 +28,7 @@ require (
 	github.com/clipperhouse/displaywidth v0.9.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.5.0 // indirect
-	github.com/cloudflare/circl v1.6.1 // indirect
+	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
