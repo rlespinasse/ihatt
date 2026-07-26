@@ -55,7 +55,7 @@ func DiscoverRepos(roots []string, maxDepth int) ([]string, error) {
 
 			if d.Name() == ".git" {
 				repoPath := filepath.Dir(path)
-				if !seen[repoPath] {
+				if !seen[repoPath] && isValidGitRepo(repoPath) {
 					seen[repoPath] = true
 					repos = append(repos, repoPath)
 				}
@@ -68,6 +68,18 @@ func DiscoverRepos(roots []string, maxDepth int) ([]string, error) {
 		}
 	}
 	return repos, nil
+}
+
+// isValidGitRepo reports whether path is openable as a git repository with a
+// resolvable HEAD, filtering out empty/corrupted .git dirs or dangling
+// worktree/submodule references.
+func isValidGitRepo(path string) bool {
+	r, err := gogit.PlainOpen(path)
+	if err != nil {
+		return false
+	}
+	_, err = r.Head()
+	return err == nil
 }
 
 // IndexRepo opens a git repo and indexes all its commits into the store.
