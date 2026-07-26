@@ -15,6 +15,7 @@ const (
 	ScreenDetail
 	ScreenSearch
 	ScreenXRefGraph
+	ScreenCommitDetail
 )
 
 type App struct {
@@ -23,22 +24,24 @@ type App struct {
 	prevScreen    Screen
 	width, height int
 
-	dashboard *DashboardModel
-	timeline  *TimelineModel
-	detail    *DetailModel
-	search    *SearchModel
-	xrefgraph *XRefGraphModel
+	dashboard    *DashboardModel
+	timeline     *TimelineModel
+	detail       *DetailModel
+	search       *SearchModel
+	xrefgraph    *XRefGraphModel
+	commitDetail *CommitDetailModel
 }
 
 func NewApp(s store.Store) *App {
 	return &App{
-		store:     s,
-		screen:    ScreenDashboard,
-		dashboard: NewDashboardModel(s),
-		timeline:  NewTimelineModel(s),
-		detail:    NewDetailModel(s),
-		search:    NewSearchModel(s),
-		xrefgraph: NewXRefGraphModel(s),
+		store:        s,
+		screen:       ScreenDashboard,
+		dashboard:    NewDashboardModel(s),
+		timeline:     NewTimelineModel(s),
+		detail:       NewDetailModel(s),
+		search:       NewSearchModel(s),
+		xrefgraph:    NewXRefGraphModel(s),
+		commitDetail: NewCommitDetailModel(),
 	}
 }
 
@@ -56,6 +59,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.detail.SetSize(msg.Width, msg.Height-2)
 		a.search.SetSize(msg.Width, msg.Height-2)
 		a.xrefgraph.SetSize(msg.Width, msg.Height-2)
+		a.commitDetail.SetSize(msg.Width, msg.Height-2)
 		return a, nil
 
 	case tea.KeyMsg:
@@ -95,6 +99,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.detail.SetRepoID(msg.RepoID)
 		a.switchScreen(ScreenDetail)
 		return a, a.detail.Init()
+
+	case NavigateToCommitDetailMsg:
+		a.commitDetail.SetCommit(msg.Commit, msg.RepoName)
+		a.switchScreen(ScreenCommitDetail)
+		return a, nil
 	}
 
 	// Delegate to active screen
@@ -110,6 +119,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = a.search.Update(msg)
 	case ScreenXRefGraph:
 		cmd = a.xrefgraph.Update(msg)
+	case ScreenCommitDetail:
+		cmd = a.commitDetail.Update(msg)
 	}
 	return a, cmd
 }
@@ -127,6 +138,8 @@ func (a *App) View() string {
 		content = a.search.View()
 	case ScreenXRefGraph:
 		content = a.xrefgraph.View()
+	case ScreenCommitDetail:
+		content = a.commitDetail.View()
 	}
 
 	// Status bar

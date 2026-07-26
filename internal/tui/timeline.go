@@ -18,6 +18,21 @@ type dayGroup struct {
 	Expanded bool
 }
 
+type timelineRowKind int
+
+const (
+	rowDay timelineRowKind = iota
+	rowRepo
+	rowCommit
+)
+
+type timelineRow struct {
+	kind   timelineRowKind
+	dayIdx int
+	repoID string
+	commit *model.Commit
+}
+
 type TimelineModel struct {
 	store         store.Store
 	width, height int
@@ -77,15 +92,56 @@ func (m *TimelineModel) Init() tea.Cmd {
 	}
 }
 
+// buildRows flattens the day/repo/commit tree into the rows currently
+// visible given each day's expanded state, so cursor and scroll can operate
+// on the same units as rendering.
+func (m *TimelineModel) buildRows() []timelineRow {
+	var rows []timelineRow
+	for di, day := range m.days {
+		rows = append(rows, timelineRow{kind: rowDay, dayIdx: di})
+		if !day.Expanded {
+			continue
+		}
+
+		byRepo := make(map[string][]*model.Commit)
+		var repoOrder []string
+		for _, c := range day.Commits {
+			if _, ok := byRepo[c.RepoID]; !ok {
+				repoOrder = append(repoOrder, c.RepoID)
+			}
+			byRepo[c.RepoID] = append(byRepo[c.RepoID], c)
+		}
+
+		for _, repoID := range repoOrder {
+			rows = append(rows, timelineRow{kind: rowRepo, dayIdx: di, repoID: repoID})
+			for _, c := range byRepo[repoID] {
+				rows = append(rows, timelineRow{kind: rowCommit, dayIdx: di, repoID: repoID, commit: c})
+			}
+		}
+	}
+	return rows
+}
+
+func (m *TimelineModel) visibleRows() int {
+	visibleRows := m.height - 4
+	if visibleRows < 1 {
+		visibleRows = 10
+	}
+	return visibleRows
+}
+
 func (m *TimelineModel) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case timelineLoadedMsg:
 		m.days = msg.days
 		m.repoNames = msg.repoNames
 		m.loaded = true
+		m.cursor = 0
+		m.scroll = 0
 		return nil
 
 	case tea.KeyMsg:
+		rows := m.buildRows()
 		switch {
 		case key.Matches(msg, Keys.Up):
 			if m.cursor > 0 {
@@ -95,16 +151,38 @@ func (m *TimelineModel) Update(msg tea.Msg) tea.Cmd {
 				}
 			}
 		case key.Matches(msg, Keys.Down):
-			if m.cursor < len(m.days)-1 {
+			if m.cursor < len(rows)-1 {
 				m.cursor++
-				visibleRows := m.height - 4
+				visibleRows := m.visibleRows()
 				if m.cursor >= m.scroll+visibleRows {
 					m.scroll = m.cursor - visibleRows + 1
 				}
 			}
 		case key.Matches(msg, Keys.Enter):
-			if len(m.days) > 0 {
-				m.days[m.cursor].Expanded = !m.days[m.cursor].Expanded
+			if m.cursor < 0 || m.cursor >= len(rows) {
+				break
+			}
+			row := rows[m.cursor]
+			switch row.kind {
+			case rowDay:
+				m.days[row.dayIdx].Expanded = !m.days[row.dayIdx].Expanded
+
+				newRows := m.buildRows()
+				if m.cursor >= len(newRows) {
+					m.cursor = len(newRows) - 1
+				}
+				if m.scroll > m.cursor {
+					m.scroll = m.cursor
+				}
+			case rowCommit:
+				c := row.commit
+				name := m.repoNames[c.RepoID]
+				if name == "" {
+					name = c.RepoID
+				}
+				return func() tea.Msg {
+					return NavigateToCommitDetailMsg{Commit: c, RepoName: name}
+				}
 			}
 		}
 	}
@@ -125,78 +203,61 @@ func (m *TimelineModel) View() string {
 		return sb.String()
 	}
 
-	visibleRows := m.height - 4
-	if visibleRows < 1 {
-		visibleRows = 10
-	}
+	rows := m.buildRows()
+	visibleRows := m.visibleRows()
 
 	lines := 0
-	for i, day := range m.days {
-		if i < m.scroll {
-			continue
-		}
-		if lines >= visibleRows {
-			break
-		}
+	for i := m.scroll; i < len(rows) && lines < visibleRows; i++ {
+		row := rows[i]
 
 		prefix := "  "
 		if i == m.cursor {
 			prefix = "> "
 		}
 
-		indicator := "+"
-		if day.Expanded {
-			indicator = "-"
-		}
+		switch row.kind {
+		case rowDay:
+			day := m.days[row.dayIdx]
+			indicator := "+"
+			if day.Expanded {
+				indicator = "-"
+			}
+			header := fmt.Sprintf("%s%s %s  %s",
+				prefix,
+				indicator,
+				StyleSubtitle.Render(day.Date),
+				StyleMuted.Render(fmt.Sprintf("(%d commits)", len(day.Commits))),
+			)
+			sb.WriteString(header + "\n")
 
-		header := fmt.Sprintf("%s%s %s  %s",
-			prefix,
-			indicator,
-			StyleSubtitle.Render(day.Date),
-			StyleMuted.Render(fmt.Sprintf("(%d commits)", len(day.Commits))),
-		)
-		sb.WriteString(header + "\n")
+		case rowRepo:
+			name := m.repoNames[row.repoID]
+			if name == "" {
+				name = row.repoID[:8]
+			}
+			sb.WriteString(fmt.Sprintf("%s  %s\n", prefix, StyleRepoName.Render(name)))
+
+		case rowCommit:
+			c := row.commit
+			msg := c.Message
+			if idx := strings.Index(msg, "\n"); idx != -1 {
+				msg = msg[:idx]
+			}
+			maxMsg := m.width - 30
+			if maxMsg < 20 {
+				maxMsg = 20
+			}
+			if len(msg) > maxMsg {
+				msg = msg[:maxMsg-3] + "..."
+			}
+			sb.WriteString(fmt.Sprintf("%s    %s %s %s\n",
+				prefix,
+				StyleDate.Render(c.Date.Format("15:04")),
+				StyleHash.Render(c.Hash[:7]),
+				msg,
+			))
+		}
 		lines++
-
-		if day.Expanded {
-			// Group by repo within day
-			byRepo := make(map[string][]*model.Commit)
-			for _, c := range day.Commits {
-				byRepo[c.RepoID] = append(byRepo[c.RepoID], c)
-			}
-
-			for repoID, commits := range byRepo {
-				name := m.repoNames[repoID]
-				if name == "" {
-					name = repoID[:8]
-				}
-				sb.WriteString(fmt.Sprintf("    %s\n", StyleRepoName.Render(name)))
-				lines++
-
-				for _, c := range commits {
-					if lines >= visibleRows {
-						break
-					}
-					msg := c.Message
-					if idx := strings.Index(msg, "\n"); idx != -1 {
-						msg = msg[:idx]
-					}
-					maxMsg := m.width - 30
-					if maxMsg < 20 {
-						maxMsg = 20
-					}
-					if len(msg) > maxMsg {
-						msg = msg[:maxMsg-3] + "..."
-					}
-					sb.WriteString(fmt.Sprintf("      %s %s %s\n",
-						StyleDate.Render(c.Date.Format("15:04")),
-						StyleHash.Render(c.Hash[:7]),
-						msg,
-					))
-					lines++
-				}
-			}
-		}
 	}
 
 	return sb.String()
