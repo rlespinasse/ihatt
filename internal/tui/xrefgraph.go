@@ -22,13 +22,15 @@ type XRefGraphModel struct {
 	width, height int
 	links         []repoLink
 	repos         []*model.Repository
+	refCounts     map[string]int
 	cursor        int
 	loaded        bool
 }
 
 type xrefGraphLoadedMsg struct {
-	links []repoLink
-	repos []*model.Repository
+	links     []repoLink
+	repos     []*model.Repository
+	refCounts map[string]int
 }
 
 func NewXRefGraphModel(s store.Store) *XRefGraphModel {
@@ -79,7 +81,17 @@ func (m *XRefGraphModel) Init() tea.Cmd {
 			return links[i].Count > links[j].Count
 		})
 
-		return xrefGraphLoadedMsg{links: links, repos: repos}
+		refCounts := make(map[string]int)
+		var reposWithRefs []*model.Repository
+		for _, repo := range repos {
+			xrefs, _ := m.store.GetCrossReferencesByRepo(repo.ID)
+			if len(xrefs) > 0 {
+				refCounts[repo.ID] = len(xrefs)
+				reposWithRefs = append(reposWithRefs, repo)
+			}
+		}
+
+		return xrefGraphLoadedMsg{links: links, repos: reposWithRefs, refCounts: refCounts}
 	}
 }
 
@@ -88,6 +100,7 @@ func (m *XRefGraphModel) Update(msg tea.Msg) tea.Cmd {
 	case xrefGraphLoadedMsg:
 		m.links = msg.links
 		m.repos = msg.repos
+		m.refCounts = msg.refCounts
 		m.loaded = true
 		return nil
 
@@ -151,8 +164,7 @@ func (m *XRefGraphModel) View() string {
 		if i == m.cursor {
 			prefix = "> "
 		}
-		xrefs, _ := m.store.GetCrossReferencesByRepo(r.ID)
-		line := fmt.Sprintf("%s%-30s %d references", prefix, r.Name, len(xrefs))
+		line := fmt.Sprintf("%s%-30s %d references", prefix, r.Name, m.refCounts[r.ID])
 		if i == m.cursor {
 			sb.WriteString(StyleSelected.Render(line))
 		} else {

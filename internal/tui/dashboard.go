@@ -17,6 +17,7 @@ type DashboardModel struct {
 	store         store.Store
 	width, height int
 	repos         []*model.Repository
+	lastCommits   map[string]*model.Commit // repo ID -> last commit
 	recentCommits []*model.Commit
 	heatmap       map[string]int // date -> commit count
 	selectedRepo  int
@@ -24,9 +25,10 @@ type DashboardModel struct {
 }
 
 type dashboardLoadedMsg struct {
-	repos   []*model.Repository
-	commits []*model.Commit
-	heatmap map[string]int
+	repos       []*model.Repository
+	lastCommits map[string]*model.Commit
+	commits     []*model.Commit
+	heatmap     map[string]int
 }
 
 func NewDashboardModel(s store.Store) *DashboardModel {
@@ -36,6 +38,22 @@ func NewDashboardModel(s store.Store) *DashboardModel {
 func (m *DashboardModel) Init() tea.Cmd {
 	return func() tea.Msg {
 		repos, _ := m.store.ListRepos()
+
+		lastCommits := make(map[string]*model.Commit)
+		for _, r := range repos {
+			if last, err := m.store.GetCommitsByRepo(r.ID, 1); err == nil && len(last) > 0 {
+				lastCommits[r.ID] = last[0]
+			}
+		}
+
+		sort.Slice(repos, func(i, j int) bool {
+			ci, oki := lastCommits[repos[i].ID]
+			cj, okj := lastCommits[repos[j].ID]
+			if oki && okj {
+				return ci.Date.After(cj.Date)
+			}
+			return oki && !okj
+		})
 
 		// Get last 90 days of commits for heatmap
 		now := time.Now()
@@ -64,7 +82,7 @@ func (m *DashboardModel) Init() tea.Cmd {
 			recent = commits
 		}
 
-		return dashboardLoadedMsg{repos: repos, commits: recent, heatmap: heatmap}
+		return dashboardLoadedMsg{repos: repos, lastCommits: lastCommits, commits: recent, heatmap: heatmap}
 	}
 }
 
@@ -72,6 +90,7 @@ func (m *DashboardModel) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case dashboardLoadedMsg:
 		m.repos = msg.repos
+		m.lastCommits = msg.lastCommits
 		m.recentCommits = msg.commits
 		m.heatmap = msg.heatmap
 		m.loaded = true
@@ -228,7 +247,11 @@ func (m *DashboardModel) renderRepoList() string {
 
 	for i, r := range m.repos {
 		count, _ := m.store.CountCommitsByRepo(r.ID)
-		line := fmt.Sprintf("  %-30s %d commits", r.Name, count)
+		lastCommit := "no commits"
+		if last, ok := m.lastCommits[r.ID]; ok {
+			lastCommit = last.Date.Format("Jan 02 15:04")
+		}
+		line := fmt.Sprintf("  %-30s %-20s %d commits", r.Name, lastCommit, count)
 
 		if i == m.selectedRepo {
 			sb.WriteString(StyleSelected.Render(line))
