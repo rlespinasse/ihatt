@@ -24,6 +24,7 @@ func RepoName(path string) string {
 }
 
 // DiscoverRepos walks root directories and finds git repositories.
+// A maxDepth <= 0 means unlimited depth.
 func DiscoverRepos(roots []string, maxDepth int) ([]string, error) {
 	var repos []string
 	seen := make(map[string]bool)
@@ -44,7 +45,7 @@ func DiscoverRepos(roots []string, maxDepth int) ([]string, error) {
 			// Check depth
 			rel, _ := filepath.Rel(root, path)
 			depth := len(strings.Split(rel, string(filepath.Separator)))
-			if depth > maxDepth {
+			if maxDepth > 0 && depth > maxDepth {
 				return filepath.SkipDir
 			}
 

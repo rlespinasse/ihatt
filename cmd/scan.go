@@ -73,6 +73,6 @@ var scanCmd = &cobra.Command{
 
 func init() {
 	scanCmd.Flags().StringSlice("root", nil, "Root directories to scan for git repos")
-	scanCmd.Flags().Int("depth", 3, "Maximum directory depth to scan")
+	scanCmd.Flags().Int("depth", 3, "Maximum directory depth to scan (0 for unlimited/recursive)")
 	rootCmd.AddCommand(scanCmd)
 }
