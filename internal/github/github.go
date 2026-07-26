@@ -50,16 +50,12 @@ type ghIssue struct {
 	CreatedAt time.Time  `json:"createdAt"`
 	UpdatedAt time.Time  `json:"updatedAt"`
 	ClosedAt  *time.Time `json:"closedAt"`
-	Labels    ghLabels   `json:"labels"`
+	Labels    []ghLabel  `json:"labels"`
 	URL       string     `json:"url"`
 }
 
 type ghAuthor struct {
 	Login string `json:"login"`
-}
-
-type ghLabels struct {
-	Nodes []ghLabel `json:"nodes"`
 }
 
 type ghLabel struct {
@@ -75,7 +71,7 @@ type ghPR struct {
 	UpdatedAt time.Time  `json:"updatedAt"`
 	ClosedAt  *time.Time `json:"closedAt"`
 	MergedAt  *time.Time `json:"mergedAt"`
-	Labels    ghLabels   `json:"labels"`
+	Labels    []ghLabel  `json:"labels"`
 	URL       string     `json:"url"`
 }
 
@@ -111,8 +107,8 @@ func syncIssues(s store.Store, repoID, owner, repoName string) (int, error) {
 	}
 
 	for _, issue := range issues {
-		labels := make([]string, len(issue.Labels.Nodes))
-		for i, l := range issue.Labels.Nodes {
+		labels := make([]string, len(issue.Labels))
+		for i, l := range issue.Labels {
 			labels[i] = l.Name
 		}
 
@@ -155,8 +151,8 @@ func syncPRs(s store.Store, repoID, owner, repoName string) (int, error) {
 	}
 
 	for _, pr := range prs {
-		labels := make([]string, len(pr.Labels.Nodes))
-		for i, l := range pr.Labels.Nodes {
+		labels := make([]string, len(pr.Labels))
+		for i, l := range pr.Labels {
 			labels[i] = l.Name
 		}
 
