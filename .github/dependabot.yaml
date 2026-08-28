@@ -4,20 +4,32 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       all-github-actions:
         patterns:
           - "*"
-    cooldown:
-      default-days: 3
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: gomod
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       all-go-modules:
         patterns:
           - "*"
-    cooldown:
-      default-days: 3
+        update-types:
+          - minor
+          - patch
