@@ -17,7 +17,7 @@ var linksCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		target := args[0]
 
-		s, err := store.NewBoltStore(config.DBPath())
+		s, err := store.OpenBoltStore(config.DBPath())
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}

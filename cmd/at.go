@@ -30,7 +30,7 @@ var atCmd = &cobra.Command{
 			return fmt.Errorf("cannot parse date %q: %w", dateStr, err)
 		}
 
-		s, err := store.NewBoltStore(config.DBPath())
+		s, err := store.OpenBoltStore(config.DBPath())
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}

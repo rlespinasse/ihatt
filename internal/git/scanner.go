@@ -42,6 +42,17 @@ func DiscoverRepos(roots []string, maxDepth int) ([]string, error) {
 				return nil
 			}
 
+			// Check .git before depth: the repo dir itself is within
+			// maxDepth, and its .git entry is one level deeper.
+			if d.Name() == ".git" {
+				repoPath := filepath.Dir(path)
+				if !seen[repoPath] && isValidGitRepo(repoPath) {
+					seen[repoPath] = true
+					repos = append(repos, repoPath)
+				}
+				return filepath.SkipDir
+			}
+
 			// Check depth
 			rel, _ := filepath.Rel(root, path)
 			depth := len(strings.Split(rel, string(filepath.Separator)))
@@ -49,17 +60,8 @@ func DiscoverRepos(roots []string, maxDepth int) ([]string, error) {
 				return filepath.SkipDir
 			}
 
-			// Skip hidden dirs (except .git check below)
-			if d.Name() != "." && strings.HasPrefix(d.Name(), ".") && d.Name() != ".git" {
-				return filepath.SkipDir
-			}
-
-			if d.Name() == ".git" {
-				repoPath := filepath.Dir(path)
-				if !seen[repoPath] && isValidGitRepo(repoPath) {
-					seen[repoPath] = true
-					repos = append(repos, repoPath)
-				}
+			// Skip hidden dirs
+			if d.Name() != "." && strings.HasPrefix(d.Name(), ".") {
 				return filepath.SkipDir
 			}
 			return nil

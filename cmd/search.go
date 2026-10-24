@@ -24,7 +24,7 @@ var searchCmd = &cobra.Command{
 		since, _ := cmd.Flags().GetString("since")
 		until, _ := cmd.Flags().GetString("until")
 
-		s, err := store.NewBoltStore(config.DBPath())
+		s, err := store.OpenBoltStore(config.DBPath())
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}

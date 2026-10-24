@@ -2,7 +2,10 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"strings"
 	"time"
 
@@ -19,6 +22,16 @@ var (
 
 type BoltStore struct {
 	db *bolt.DB
+}
+
+// OpenBoltStore opens an existing database. Unlike NewBoltStore it never
+// creates the file, so a missing database is reported instead of silently
+// initialized.
+func OpenBoltStore(path string) (*BoltStore, error) {
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("database not found at %s: run `ihatt init` first", path)
+	}
+	return NewBoltStore(path)
 }
 
 func NewBoltStore(path string) (*BoltStore, error) {
