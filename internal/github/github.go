@@ -3,7 +3,6 @@ package github
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -13,36 +12,6 @@ import (
 	"github.com/rlespinasse/ihatt/internal/model"
 	"github.com/rlespinasse/ihatt/internal/store"
 )
-
-// ParseGitHubRemote extracts owner and repo from a GitHub remote URL.
-func ParseGitHubRemote(remoteURL string) (owner, repo string, err error) {
-	// Handle SSH URLs: git@github.com:owner/repo.git
-	if strings.HasPrefix(remoteURL, "git@github.com:") {
-		path := strings.TrimPrefix(remoteURL, "git@github.com:")
-		path = strings.TrimSuffix(path, ".git")
-		parts := strings.SplitN(path, "/", 2)
-		if len(parts) != 2 {
-			return "", "", fmt.Errorf("invalid GitHub SSH URL: %s", remoteURL)
-		}
-		return parts[0], parts[1], nil
-	}
-
-	// Handle HTTPS URLs: https://github.com/owner/repo.git
-	u, err := url.Parse(remoteURL)
-	if err != nil {
-		return "", "", err
-	}
-	if u.Host != "github.com" {
-		return "", "", fmt.Errorf("not a GitHub URL: %s", remoteURL)
-	}
-	path := strings.TrimPrefix(u.Path, "/")
-	path = strings.TrimSuffix(path, ".git")
-	parts := strings.SplitN(path, "/", 2)
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid GitHub URL path: %s", remoteURL)
-	}
-	return parts[0], parts[1], nil
-}
 
 type ghAuthor struct {
 	Login string `json:"login"`
@@ -94,18 +63,18 @@ type ghPR struct {
 
 // SyncRepo fetches issues and PRs for a GitHub repo and stores them.
 // A full sync fetches everything; otherwise only items updated since the last sync.
-func SyncRepo(s store.Store, repoID, owner, repoName string, opts forge.Options) (int, int, int, error) {
-	issueCount, err := syncIssues(s, repoID, owner, repoName, opts)
+func SyncRepo(s store.Store, repoID string, r forge.Remote, opts forge.Options) (int, int, int, error) {
+	issueCount, err := syncIssues(s, repoID, r, opts)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("sync issues: %w", err)
 	}
 
-	prCount, err := syncPRs(s, repoID, owner, repoName, opts)
+	prCount, err := syncPRs(s, repoID, r, opts)
 	if err != nil {
 		return issueCount, 0, 0, fmt.Errorf("sync PRs: %w", err)
 	}
 
-	ciCount, err := syncCI(s, repoID, owner, repoName, opts)
+	ciCount, err := syncCI(s, repoID, r, opts)
 	if err != nil {
 		return issueCount, prCount, 0, fmt.Errorf("sync CI: %w", err)
 	}
@@ -113,10 +82,15 @@ func SyncRepo(s store.Store, repoID, owner, repoName string, opts forge.Options)
 	return issueCount, prCount, ciCount, nil
 }
 
+// repoRef is the HOST/OWNER/REPO form that gh accepts for any GitHub host.
+func repoRef(r forge.Remote) string {
+	return r.Host + "/" + r.Owner + "/" + r.Repo
+}
+
 // listArgs builds the gh list arguments for a sync plan.
-func listArgs(kind string, owner, repoName string, plan forge.Plan, fields string) []string {
+func listArgs(kind string, r forge.Remote, plan forge.Plan, fields string) []string {
 	args := []string{kind, "list",
-		"--repo", owner + "/" + repoName,
+		"--repo", repoRef(r),
 		"--state", "all",
 		"--limit", strconv.Itoa(listLimit),
 		"--json", fields,
@@ -130,13 +104,13 @@ func listArgs(kind string, owner, repoName string, plan forge.Plan, fields strin
 // listLimit caps one gh list call. gh pages internally up to this many items.
 const listLimit = 10000
 
-func syncIssues(s store.Store, repoID, owner, repoName string, opts forge.Options) (int, error) {
+func syncIssues(s store.Store, repoID string, r forge.Remote, opts forge.Options) (int, error) {
 	plan, err := forge.Start(s, repoID, "github", "issue", opts.Full)
 	if err != nil {
 		return 0, err
 	}
 
-	stdout, _, err := gh.Exec(listArgs("issue", owner, repoName, plan,
+	stdout, _, err := gh.Exec(listArgs("issue", r, plan,
 		"number,title,state,author,assignees,milestone,comments,createdAt,updatedAt,closedAt,labels,url")...)
 	if err != nil {
 		return 0, err
@@ -151,8 +125,8 @@ func syncIssues(s store.Store, repoID, owner, repoName string, opts forge.Option
 		item := &model.GitHubItem{
 			Number:    issue.Number,
 			RepoID:    repoID,
-			Owner:     owner,
-			RepoName:  repoName,
+			Owner:     r.Owner,
+			RepoName:  r.Repo,
 			Type:      "issue",
 			Title:     issue.Title,
 			State:     issue.State,
@@ -170,7 +144,7 @@ func syncIssues(s store.Store, repoID, owner, repoName string, opts forge.Option
 			return 0, err
 		}
 		if opts.Comments && plan.UpdatedSince(issue.UpdatedAt) {
-			if err := syncGitHubComments(s, repoID, owner, repoName, "issue", issue.Number); err != nil {
+			if err := syncGitHubComments(s, repoID, r, "issue", issue.Number); err != nil {
 				plan.CommentFailed("issue", issue.Number, err)
 			}
 		}
@@ -179,13 +153,13 @@ func syncIssues(s store.Store, repoID, owner, repoName string, opts forge.Option
 	return len(issues), plan.Done(s)
 }
 
-func syncPRs(s store.Store, repoID, owner, repoName string, opts forge.Options) (int, error) {
+func syncPRs(s store.Store, repoID string, r forge.Remote, opts forge.Options) (int, error) {
 	plan, err := forge.Start(s, repoID, "github", "pr", opts.Full)
 	if err != nil {
 		return 0, err
 	}
 
-	stdout, _, err := gh.Exec(listArgs("pr", owner, repoName, plan,
+	stdout, _, err := gh.Exec(listArgs("pr", r, plan,
 		"number,title,state,isDraft,author,assignees,milestone,comments,reviewDecision,mergeCommit,createdAt,updatedAt,closedAt,mergedAt,labels,url")...)
 	if err != nil {
 		return 0, err
@@ -205,8 +179,8 @@ func syncPRs(s store.Store, repoID, owner, repoName string, opts forge.Options) 
 		item := &model.GitHubItem{
 			Number:         pr.Number,
 			RepoID:         repoID,
-			Owner:          owner,
-			RepoName:       repoName,
+			Owner:          r.Owner,
+			RepoName:       r.Repo,
 			Type:           "pr",
 			Title:          pr.Title,
 			State:          state,
@@ -227,7 +201,7 @@ func syncPRs(s store.Store, repoID, owner, repoName string, opts forge.Options) 
 			return 0, err
 		}
 		if opts.Comments && plan.UpdatedSince(pr.UpdatedAt) {
-			if err := syncGitHubComments(s, repoID, owner, repoName, "pr", pr.Number); err != nil {
+			if err := syncGitHubComments(s, repoID, r, "pr", pr.Number); err != nil {
 				plan.CommentFailed("pr", pr.Number, err)
 			}
 		}
@@ -279,14 +253,14 @@ type ghRun struct {
 }
 
 // syncCI fetches the repo's recent workflow runs, keyed by commit.
-func syncCI(s store.Store, repoID, owner, repoName string, opts forge.Options) (int, error) {
+func syncCI(s store.Store, repoID string, r forge.Remote, opts forge.Options) (int, error) {
 	plan, err := forge.Start(s, repoID, "github", "ci", opts.Full)
 	if err != nil {
 		return 0, err
 	}
 
 	args := []string{"run", "list",
-		"--repo", owner + "/" + repoName,
+		"--repo", repoRef(r),
 		"--limit", strconv.Itoa(listLimit),
 		"--json", "databaseId,headSha,workflowName,status,conclusion,createdAt,url",
 	}
@@ -335,9 +309,9 @@ type ghComment struct {
 
 // syncGitHubComments stores the conversation comments of one issue or PR.
 // PRs share the issues comments endpoint, so review comments are not included.
-func syncGitHubComments(s store.Store, repoID, owner, repoName, itemType string, number int) error {
-	stdout, _, err := gh.Exec("api", "--paginate",
-		fmt.Sprintf("repos/%s/%s/issues/%d/comments", owner, repoName, number))
+func syncGitHubComments(s store.Store, repoID string, r forge.Remote, itemType string, number int) error {
+	stdout, _, err := gh.Exec("api", "--hostname", r.Host, "--paginate",
+		fmt.Sprintf("repos/%s/%s/issues/%d/comments", r.Owner, r.Repo, number))
 	if err != nil {
 		return err
 	}

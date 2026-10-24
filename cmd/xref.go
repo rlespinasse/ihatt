@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/rlespinasse/ihatt/internal/config"
+	"github.com/rlespinasse/ihatt/internal/forge"
 	gitscanner "github.com/rlespinasse/ihatt/internal/git"
-	"github.com/rlespinasse/ihatt/internal/gitlab"
 	"github.com/rlespinasse/ihatt/internal/store"
 	"github.com/rlespinasse/ihatt/internal/xref"
 	"github.com/spf13/cobra"
@@ -15,8 +15,6 @@ var xrefCmd = &cobra.Command{
 	Use:   "xref",
 	Short: "Analyze commits for cross-references between projects",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		repoFilter, _ := cmd.Flags().GetString("repo")
-
 		s, err := store.OpenBoltStore(config.DBPath())
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
@@ -32,6 +30,18 @@ var xrefCmd = &cobra.Command{
 			return fmt.Errorf("no repositories tracked")
 		}
 
+		repoFilter, scope := repoScope(cmd, repos)
+		fmt.Printf("Scope: %s\n", scope)
+
+		cfg, err := config.Load()
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+		kinds, err := forgeKinds(cfg)
+		if err != nil {
+			return err
+		}
+
 		totalXrefs := 0
 		for _, repo := range repos {
 			if repoFilter != "" && repo.Name != repoFilter && repo.ID != repoFilter {
@@ -40,8 +50,10 @@ var xrefCmd = &cobra.Command{
 
 			mrRefs := false
 			if remoteURL, err := gitscanner.GetRemoteURL(repo.Path); err == nil {
-				_, _, err := gitlab.ParseGitLabRemote(remoteURL)
-				mrRefs = err == nil
+				if r, err := forge.ParseRemote(remoteURL); err == nil {
+					kind, _ := hostKind(kinds, r.Host)
+					mrRefs = kind == "gitlab"
+				}
 			}
 
 			count, err := xref.AnalyzeRepo(s, repo.ID, repos, mrRefs)
@@ -61,6 +73,6 @@ var xrefCmd = &cobra.Command{
 }
 
 func init() {
-	xrefCmd.Flags().String("repo", "", "Analyze only this repository")
+	addScopeFlags(xrefCmd)
 	rootCmd.AddCommand(xrefCmd)
 }
