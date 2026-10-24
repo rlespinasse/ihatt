@@ -9,6 +9,14 @@ import (
 
 type Config struct {
 	ScanRoots []string `mapstructure:"scan_roots"`
+	Forges    []Forge  `mapstructure:"forges"`
+}
+
+// Forge maps a forge host to its kind: "github", "gitlab", or "unsupported" for
+// hosts ihatt skips. github.com and gitlab.com need no entry.
+type Forge struct {
+	Host string `mapstructure:"host"`
+	Kind string `mapstructure:"kind"`
 }
 
 func ConfigDir() string {
@@ -63,6 +71,12 @@ func Save(cfg *Config) error {
 	v.SetConfigType("yaml")
 
 	v.Set("scan_roots", cfg.ScanRoots)
+
+	forges := make([]map[string]string, 0, len(cfg.Forges))
+	for _, f := range cfg.Forges {
+		forges = append(forges, map[string]string{"host": f.Host, "kind": f.Kind})
+	}
+	v.Set("forges", forges)
 
 	if err := os.MkdirAll(ConfigDir(), 0o755); err != nil {
 		return err

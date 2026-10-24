@@ -21,31 +21,6 @@ const provider = "gitlab"
 // perPage is the GitLab API page size; the maximum allowed is 100.
 const perPage = 100
 
-// ParseGitLabRemote extracts the namespace (owner, possibly nested groups) and
-// project name from a gitlab.com remote URL.
-func ParseGitLabRemote(remoteURL string) (owner, repo string, err error) {
-	var path string
-	if after, ok := strings.CutPrefix(remoteURL, "git@gitlab.com:"); ok {
-		path = after
-	} else {
-		u, err := url.Parse(remoteURL)
-		if err != nil {
-			return "", "", err
-		}
-		if u.Hostname() != "gitlab.com" {
-			return "", "", fmt.Errorf("not a GitLab URL: %s", remoteURL)
-		}
-		path = u.Path
-	}
-
-	path = strings.TrimSuffix(strings.Trim(path, "/"), ".git")
-	i := strings.LastIndex(path, "/")
-	if i <= 0 || i == len(path)-1 {
-		return "", "", fmt.Errorf("invalid GitLab URL path: %s", remoteURL)
-	}
-	return path[:i], path[i+1:], nil
-}
-
 type glUser struct {
 	Username string `json:"username"`
 }
@@ -90,22 +65,22 @@ type glMR struct {
 
 // SyncRepo fetches issues, merge requests and pipelines for a GitLab project.
 // A full sync fetches everything; otherwise only items updated since the last sync.
-func SyncRepo(s store.Store, repoID, owner, repoName string, opts forge.Options) (int, int, int, error) {
+func SyncRepo(s store.Store, repoID string, r forge.Remote, opts forge.Options) (int, int, int, error) {
 	if _, err := exec.LookPath("glab"); err != nil {
-		return 0, 0, 0, fmt.Errorf("glab not found in PATH; install it and run 'glab auth login'")
+		return 0, 0, 0, fmt.Errorf("glab not found in PATH; install it and run 'glab auth login --hostname %s'", r.Host)
 	}
 
-	issueCount, err := syncIssues(s, repoID, owner, repoName, opts)
+	issueCount, err := syncIssues(s, repoID, r, opts)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("sync issues: %w", err)
 	}
 
-	mrCount, err := syncMRs(s, repoID, owner, repoName, opts)
+	mrCount, err := syncMRs(s, repoID, r, opts)
 	if err != nil {
 		return issueCount, 0, 0, fmt.Errorf("sync merge requests: %w", err)
 	}
 
-	ciCount, err := syncPipelines(s, repoID, owner, repoName, opts)
+	ciCount, err := syncPipelines(s, repoID, r, opts)
 	if err != nil {
 		return issueCount, mrCount, 0, fmt.Errorf("sync pipelines: %w", err)
 	}
@@ -123,13 +98,13 @@ type glPipeline struct {
 }
 
 // syncPipelines stores the project's pipelines as CI runs, keyed by commit.
-func syncPipelines(s store.Store, repoID, owner, repoName string, opts forge.Options) (int, error) {
+func syncPipelines(s store.Store, repoID string, r forge.Remote, opts forge.Options) (int, error) {
 	plan, err := forge.Start(s, repoID, provider, "ci", opts.Full)
 	if err != nil {
 		return 0, err
 	}
 
-	pipelines, err := fetchAll[glPipeline](projectPath(owner, repoName, "pipelines", plan))
+	pipelines, err := fetchAll[glPipeline](r.Host, projectPath(r, "pipelines", plan))
 	if err != nil {
 		return 0, err
 	}
@@ -164,13 +139,13 @@ func normalizePipelineStatus(status string) string {
 	}
 }
 
-func syncIssues(s store.Store, repoID, owner, repoName string, opts forge.Options) (int, error) {
+func syncIssues(s store.Store, repoID string, r forge.Remote, opts forge.Options) (int, error) {
 	plan, err := forge.Start(s, repoID, provider, "issue", opts.Full)
 	if err != nil {
 		return 0, err
 	}
 
-	issues, err := fetchAll[glIssue](projectPath(owner, repoName, "issues", plan))
+	issues, err := fetchAll[glIssue](r.Host, projectPath(r, "issues", plan))
 	if err != nil {
 		return 0, err
 	}
@@ -180,8 +155,8 @@ func syncIssues(s store.Store, repoID, owner, repoName string, opts forge.Option
 			Number:    issue.IID,
 			RepoID:    repoID,
 			Provider:  provider,
-			Owner:     owner,
-			RepoName:  repoName,
+			Owner:     r.Owner,
+			RepoName:  r.Repo,
 			Type:      "issue",
 			Title:     issue.Title,
 			State:     normalizeState(issue.State),
@@ -199,7 +174,7 @@ func syncIssues(s store.Store, repoID, owner, repoName string, opts forge.Option
 			return 0, err
 		}
 		if opts.Comments && plan.UpdatedSince(issue.UpdatedAt) {
-			if err := syncNotes(s, repoID, owner, repoName, "issues", "issue", issue.IID); err != nil {
+			if err := syncNotes(s, repoID, r, "issues", "issue", issue.IID); err != nil {
 				plan.CommentFailed("issue", issue.IID, err)
 			}
 		}
@@ -208,13 +183,13 @@ func syncIssues(s store.Store, repoID, owner, repoName string, opts forge.Option
 	return len(issues), plan.Done(s)
 }
 
-func syncMRs(s store.Store, repoID, owner, repoName string, opts forge.Options) (int, error) {
+func syncMRs(s store.Store, repoID string, r forge.Remote, opts forge.Options) (int, error) {
 	plan, err := forge.Start(s, repoID, provider, "pr", opts.Full)
 	if err != nil {
 		return 0, err
 	}
 
-	mrs, err := fetchAll[glMR](projectPath(owner, repoName, "merge_requests", plan))
+	mrs, err := fetchAll[glMR](r.Host, projectPath(r, "merge_requests", plan))
 	if err != nil {
 		return 0, err
 	}
@@ -229,8 +204,8 @@ func syncMRs(s store.Store, repoID, owner, repoName string, opts forge.Options) 
 			Number:      mr.IID,
 			RepoID:      repoID,
 			Provider:    provider,
-			Owner:       owner,
-			RepoName:    repoName,
+			Owner:       r.Owner,
+			RepoName:    r.Repo,
 			Type:        "pr",
 			Title:       mr.Title,
 			State:       state,
@@ -250,7 +225,7 @@ func syncMRs(s store.Store, repoID, owner, repoName string, opts forge.Options) 
 			return 0, err
 		}
 		if opts.Comments && plan.UpdatedSince(mr.UpdatedAt) {
-			if err := syncNotes(s, repoID, owner, repoName, "merge_requests", "pr", mr.IID); err != nil {
+			if err := syncNotes(s, repoID, r, "merge_requests", "pr", mr.IID); err != nil {
 				plan.CommentFailed("pr", mr.IID, err)
 			}
 		}
@@ -261,7 +236,7 @@ func syncMRs(s store.Store, repoID, owner, repoName string, opts forge.Options) 
 
 // projectPath builds the API path for a kind of project resource, with the
 // project path URL-encoded as GitLab requires.
-func projectPath(owner, repoName, resource string, plan forge.Plan) string {
+func projectPath(r forge.Remote, resource string, plan forge.Plan) string {
 	q := url.Values{}
 	q.Set("state", "all")
 	q.Set("per_page", fmt.Sprint(perPage))
@@ -270,12 +245,12 @@ func projectPath(owner, repoName, resource string, plan forge.Plan) string {
 	if plan.Incremental() {
 		q.Set("updated_after", plan.Since.Format(time.RFC3339))
 	}
-	return "projects/" + url.PathEscape(owner+"/"+repoName) + "/" + resource + "?" + q.Encode()
+	return "projects/" + url.PathEscape(r.Owner+"/"+r.Repo) + "/" + resource + "?" + q.Encode()
 }
 
-// fetchAll pages through a GitLab list endpoint and returns every item.
-func fetchAll[T any](path string) ([]T, error) {
-	stdout, err := glab("api", "--paginate", path)
+// fetchAll pages through a GitLab list endpoint on host and returns every item.
+func fetchAll[T any](host, path string) ([]T, error) {
+	stdout, err := glab("api", "--hostname", host, "--paginate", path)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +318,7 @@ func glab(args ...string) ([]byte, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("glab %s: %w: %s", strings.Join(args[:min(len(args), 2)], " "), err, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("glab %s: %w: %s", strings.Join(args[:min(len(args), 4)], " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.Bytes(), nil
 }
@@ -358,10 +333,10 @@ type glNote struct {
 
 // syncNotes stores the user comments of one issue or MR. GitLab's "notes" are
 // comments; system notes (label changes, pushes, ...) are skipped.
-func syncNotes(s store.Store, repoID, owner, repoName, resource, itemType string, number int) error {
+func syncNotes(s store.Store, repoID string, r forge.Remote, resource, itemType string, number int) error {
 	path := fmt.Sprintf("projects/%s/%s/%d/notes?per_page=%d&sort=asc",
-		url.PathEscape(owner+"/"+repoName), resource, number, perPage)
-	notes, err := fetchAll[glNote](path)
+		url.PathEscape(r.Owner+"/"+r.Repo), resource, number, perPage)
+	notes, err := fetchAll[glNote](r.Host, path)
 	if err != nil {
 		return err
 	}

@@ -21,7 +21,6 @@ var searchCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		q := strings.Join(args, " ")
 		author, _ := cmd.Flags().GetString("author")
-		repo, _ := cmd.Flags().GetString("repo")
 		since, _ := cmd.Flags().GetString("since")
 		until, _ := cmd.Flags().GetString("until")
 
@@ -47,10 +46,10 @@ var searchCmd = &cobra.Command{
 			toTime = &t
 		}
 
-		// Resolve repo name to ID if provided
+		// Resolve the repo scope (--repo, the current repo, or all) to an ID
 		repoID := ""
-		if repo != "" {
-			repos, _ := s.ListRepos()
+		repos, _ := s.ListRepos()
+		if repo, scope := repoScope(cmd, repos); repo != "" {
 			for _, r := range repos {
 				if r.Name == repo || r.ID == repo {
 					repoID = r.ID
@@ -60,6 +59,7 @@ var searchCmd = &cobra.Command{
 			if repoID == "" {
 				return fmt.Errorf("repository not found: %s", repo)
 			}
+			fmt.Fprintf(os.Stderr, "Scope: %s\n", scope)
 		}
 
 		commits, err := s.SearchCommits(q, fromTime, toTime, author, repoID)
@@ -79,7 +79,6 @@ var searchCmd = &cobra.Command{
 
 		// Build repo name map
 		repoNames := make(map[string]string)
-		repos, _ := s.ListRepos()
 		for _, r := range repos {
 			repoNames[r.ID] = r.Name
 		}
@@ -142,7 +141,7 @@ var searchCmd = &cobra.Command{
 
 func init() {
 	searchCmd.Flags().String("author", "", "Filter by author name")
-	searchCmd.Flags().String("repo", "", "Filter by repository name")
+	addScopeFlags(searchCmd)
 	searchCmd.Flags().String("since", "", "Show results after this date")
 	searchCmd.Flags().String("until", "", "Show results before this date")
 	rootCmd.AddCommand(searchCmd)

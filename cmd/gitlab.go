@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"github.com/rlespinasse/ihatt/internal/forge"
-	"github.com/rlespinasse/ihatt/internal/gitlab"
-	"github.com/rlespinasse/ihatt/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -14,12 +11,9 @@ var gitlabCmd = &cobra.Command{
 
 var gitlabSyncCmd = &cobra.Command{
 	Use:   "sync",
-	Short: "Fetch issues and merge requests from GitLab for tracked repos",
+	Short: "Fetch issues, MRs and pipelines from GitLab for the repos in scope",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runForgeSync(cmd, "GitLab", gitlab.ParseGitLabRemote,
-			func(s store.Store, repoID, owner, repoName string, opts forge.Options) (int, int, int, error) {
-				return gitlab.SyncRepo(s, repoID, owner, repoName, opts)
-			})
+		return runSync(cmd, false, "gitlab")
 	},
 }
 
