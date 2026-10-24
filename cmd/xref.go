@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/rlespinasse/ihatt/internal/config"
+	gitscanner "github.com/rlespinasse/ihatt/internal/git"
+	"github.com/rlespinasse/ihatt/internal/gitlab"
 	"github.com/rlespinasse/ihatt/internal/store"
 	"github.com/rlespinasse/ihatt/internal/xref"
 	"github.com/spf13/cobra"
@@ -36,7 +38,13 @@ var xrefCmd = &cobra.Command{
 				continue
 			}
 
-			count, err := xref.AnalyzeRepo(s, repo.ID, repos)
+			mrRefs := false
+			if remoteURL, err := gitscanner.GetRemoteURL(repo.Path); err == nil {
+				_, _, err := gitlab.ParseGitLabRemote(remoteURL)
+				mrRefs = err == nil
+			}
+
+			count, err := xref.AnalyzeRepo(s, repo.ID, repos, mrRefs)
 			if err != nil {
 				fmt.Printf("  %-40s ERROR: %v\n", repo.Name, err)
 				continue

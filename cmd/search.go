@@ -9,6 +9,7 @@ import (
 
 	"github.com/araddon/dateparse"
 	"github.com/rlespinasse/ihatt/internal/config"
+	"github.com/rlespinasse/ihatt/internal/query"
 	"github.com/rlespinasse/ihatt/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -66,7 +67,12 @@ var searchCmd = &cobra.Command{
 			return err
 		}
 
-		if len(commits) == 0 {
+		comments, err := query.SearchComments(s, q, repoID)
+		if err != nil {
+			return err
+		}
+
+		if len(commits) == 0 && len(comments) == 0 {
 			fmt.Printf("No results for %q\n", q)
 			return nil
 		}
@@ -78,30 +84,58 @@ var searchCmd = &cobra.Command{
 			repoNames[r.ID] = r.Name
 		}
 
-		fmt.Printf("Found %d result(s) for %q\n\n", len(commits), q)
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(w, "DATE\tREPO\tHASH\tAUTHOR\tMESSAGE\n")
-		for _, c := range commits {
-			msg := c.Message
-			if idx := strings.Index(msg, "\n"); idx != -1 {
-				msg = msg[:idx]
+		if len(commits) > 0 {
+			fmt.Printf("Found %d commit(s) for %q\n\n", len(commits), q)
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			fmt.Fprintf(w, "DATE\tREPO\tHASH\tAUTHOR\tMESSAGE\n")
+			for _, c := range commits {
+				msg := c.Message
+				if idx := strings.Index(msg, "\n"); idx != -1 {
+					msg = msg[:idx]
+				}
+				if len(msg) > 60 {
+					msg = msg[:57] + "..."
+				}
+				name := repoNames[c.RepoID]
+				if name == "" {
+					name = c.RepoID[:8]
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+					c.Date.Format("2006-01-02 15:04"),
+					name,
+					c.Hash[:8],
+					c.Author,
+					msg,
+				)
 			}
-			if len(msg) > 60 {
-				msg = msg[:57] + "..."
-			}
-			name := repoNames[c.RepoID]
-			if name == "" {
-				name = c.RepoID[:8]
-			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-				c.Date.Format("2006-01-02 15:04"),
-				name,
-				c.Hash[:8],
-				c.Author,
-				msg,
-			)
+			w.Flush()
 		}
-		w.Flush()
+
+		if len(comments) > 0 {
+			if len(commits) > 0 {
+				fmt.Println()
+			}
+			fmt.Printf("Found %d comment(s) for %q\n\n", len(comments), q)
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			fmt.Fprintf(w, "DATE\tREPO\tITEM\tAUTHOR\tCOMMENT\n")
+			for _, c := range comments {
+				body := strings.Join(strings.Fields(c.Body), " ")
+				if len(body) > 60 {
+					body = body[:57] + "..."
+				}
+				name := repoNames[c.RepoID]
+				if name == "" {
+					name = c.RepoID[:8]
+				}
+				item := fmt.Sprintf("%s #%d", strings.ToUpper(c.ItemType), c.ItemNumber)
+				if c.ItemType == "pr" && c.Provider == "gitlab" {
+					item = fmt.Sprintf("MR !%d", c.ItemNumber)
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+					c.Date.Format("2006-01-02 15:04"), name, item, c.Author, body)
+			}
+			w.Flush()
+		}
 		return nil
 	},
 }

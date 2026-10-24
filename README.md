@@ -2,7 +2,7 @@
 
 A CLI/TUI temporal knowledge base over your local git repositories.
 
-`ihatt` indexes the commits (and optionally GitHub issues / PRs) of every git
+`ihatt` indexes the commits (and optionally GitHub or GitLab issues / PRs / MRs) of every git
 repo it knows about into a single local database, then lets you ask questions
 across all of them at once:
 
@@ -58,6 +58,30 @@ Download pre-built binaries from the [Releases](https://github.com/rlespinasse/i
 GitHub sync uses the [`gh`](https://cli.github.com/) credentials, so make sure
 you've run `gh auth login` if you plan to use `ihatt github sync`.
 
+GitLab sync works the same way with the [`glab`](https://gitlab.com/gitlab-org/cli) CLI:
+run `glab auth login` before `ihatt gitlab sync`. Only gitlab.com is supported for now.
+
+### What forge sync stores
+
+Both `github sync` and `gitlab sync` store, per tracked repo:
+
+- **Issues** and **PRs / MRs**: title, state, author, assignees, milestone, labels, draft,
+  comment count, dates, URL. GitHub PRs also get `reviewDecision`.
+- **CI runs**: GitHub workflow runs or GitLab pipelines, keyed by commit. Shown as `[ci success]`
+  or `[ci failure]` next to commits.
+- **Comments** (opt-in with `--with-comments`): issue and PR/MR conversation comments, searchable
+  with `ihatt search`. GitHub review comments and GitLab system notes are skipped.
+
+Each sync is incremental after the first one: only items updated since the last sync are fetched.
+Use `--full` to refetch everything. Deleted or transferred items are not removed.
+
+Limits: GitLab review and approval state is not stored. Releases come from local git tags, not from
+the forge. Tags are read when a repo is indexed, so re-run `ihatt repo add <path>` on repos tracked
+before this change.
+
+A commit that is the merge or squash commit of a PR/MR is labelled `[PR #N]` or `[MR !N]` in
+`range`, `today`, and similar output. Rebase merges may not be linked.
+
 ## Quickstart
 
 ```bash
@@ -71,6 +95,10 @@ ihatt tui                        # interactive view
 
 Subsequent `ihatt scan` runs are incremental — only new commits are indexed.
 
+Time-window commands (`today`, `yesterday`, `week`, `at`, `range`) accept filters that apply to
+issues and PRs/MRs only: `--provider github|gitlab`, `--state open|closed|merged`, `--type issue|pr`,
+`--label NAME`. Commits are never filtered.
+
 ## Commands
 
 | Command | Purpose |
@@ -83,9 +111,10 @@ Subsequent `ihatt scan` runs are incremental — only new commits are indexed.
 | `ihatt today` / `yesterday` / `week` | Pre-baked time-window queries. |
 | `ihatt at <date>` | Activity on a specific date — accepts `2024-03-15`, `march 5`, etc. |
 | `ihatt range <from> <to>` | Activity within an inclusive time range. |
-| `ihatt search <query> [--author X] [--repo R] [--since D] [--until D]` | Search commit messages, authors, and files. |
-| `ihatt github sync [--repo R]` | Pull issues and PRs for tracked GitHub repos (uses `gh`). |
-| `ihatt xref [--repo R]` | Build the cross-reference graph between tracked repos (commits referencing other repos' issues/PRs/SHAs). |
+| `ihatt search <query> [--author X] [--repo R] [--since D] [--until D]` | Search commit messages, authors, and files, plus synced issue/PR/MR comments. |
+| `ihatt github sync [--repo R] [--full] [--with-comments]` | Pull issues, PRs, CI runs for tracked GitHub repos (uses `gh`). |
+| `ihatt gitlab sync [--repo R] [--full] [--with-comments]` | Pull issues, MRs, pipelines for tracked gitlab.com repos (uses `glab`). |
+| `ihatt xref [--repo R]` | Build the cross-reference graph between tracked repos (commits referencing issues, PRs, MRs `!N` or SHAs). |
 | `ihatt links <repo>` | Show inbound and outbound cross-references for one repo. |
 | `ihatt tui` | Launch the interactive Bubble Tea UI. |
 
@@ -98,6 +127,8 @@ Run `ihatt <command> --help` for the full flag list of any command.
 | `j` / `k` (or arrows) | Move down / up |
 | `enter` | Select item |
 | `esc` / `backspace` | Back |
+| `n` / `p` | Next / previous issue or PR in the repo view |
+| `o` | Open the selected issue or PR in the browser |
 | `tab` | Switch between panes |
 | `/` or `s` | Search |
 | `t` | Timeline view |
@@ -159,7 +190,9 @@ cmd/         Cobra commands (one file per subcommand)
 internal/
   config/    XDG paths + viper-backed config
   git/       Repo discovery + commit indexer (go-git)
-  github/    GitHub sync (issues/PRs) via gh
+  forge/     Shared sync watermarks and paging (GitHub and GitLab)
+  github/    GitHub sync (issues, PRs, CI, comments) via gh
+  gitlab/    GitLab sync (issues, MRs, pipelines, notes) via glab
   model/     Shared domain types
   query/     Time-window queries + result formatting
   store/     bbolt-backed persistence
