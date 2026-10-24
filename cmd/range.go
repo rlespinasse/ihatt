@@ -24,7 +24,7 @@ var rangeCmd = &cobra.Command{
 			return fmt.Errorf("cannot parse end date %q: %w", args[1], err)
 		}
 
-		s, err := store.NewBoltStore(config.DBPath())
+		s, err := store.OpenBoltStore(config.DBPath())
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}

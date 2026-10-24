@@ -14,7 +14,7 @@ var tuiCmd = &cobra.Command{
 	Use:   "tui",
 	Short: "Launch the interactive TUI",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := store.NewBoltStore(config.DBPath())
+		s, err := store.OpenBoltStore(config.DBPath())
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}

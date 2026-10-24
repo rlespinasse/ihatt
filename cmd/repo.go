@@ -28,7 +28,7 @@ var repoAddCmd = &cobra.Command{
 			return err
 		}
 
-		s, err := store.NewBoltStore(config.DBPath())
+		s, err := store.OpenBoltStore(config.DBPath())
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}
@@ -61,7 +61,7 @@ var repoRemoveCmd = &cobra.Command{
 	Short: "Remove a tracked repository",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := store.NewBoltStore(config.DBPath())
+		s, err := store.OpenBoltStore(config.DBPath())
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}
@@ -90,7 +90,7 @@ var repoListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all tracked repositories",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := store.NewBoltStore(config.DBPath())
+		s, err := store.OpenBoltStore(config.DBPath())
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}

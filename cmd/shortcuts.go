@@ -14,7 +14,7 @@ var todayCmd = &cobra.Command{
 	Use:   "today",
 	Short: "Show today's activity across all tracked repos",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := store.NewBoltStore(config.DBPath())
+		s, err := store.OpenBoltStore(config.DBPath())
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}
@@ -34,7 +34,7 @@ var yesterdayCmd = &cobra.Command{
 	Use:   "yesterday",
 	Short: "Show yesterday's activity across all tracked repos",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := store.NewBoltStore(config.DBPath())
+		s, err := store.OpenBoltStore(config.DBPath())
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}
@@ -54,7 +54,7 @@ var weekCmd = &cobra.Command{
 	Use:   "week",
 	Short: "Show this week's activity across all tracked repos",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := store.NewBoltStore(config.DBPath())
+		s, err := store.OpenBoltStore(config.DBPath())
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}

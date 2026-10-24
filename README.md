@@ -76,7 +76,7 @@ Subsequent `ihatt scan` runs are incremental — only new commits are indexed.
 | Command | Purpose |
 | --- | --- |
 | `ihatt init` | Create config dir, data dir, and an empty database. |
-| `ihatt scan [--root PATH]... [--depth N]` | Discover git repos under one or more roots and index commits. Roots are remembered in config. |
+| `ihatt scan [--root PATH]... [--depth N]` | Discover git repos under one or more roots (recursively, unlimited depth by default; `--depth N` to limit) and index commits. Roots are remembered in config. |
 | `ihatt repo add <path>` | Track a single repository. |
 | `ihatt repo remove <name\|path>` | Stop tracking a repository. |
 | `ihatt repo list` | Show tracked repos with commit counts and last-scan time. |

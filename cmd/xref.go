@@ -15,7 +15,7 @@ var xrefCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		repoFilter, _ := cmd.Flags().GetString("repo")
 
-		s, err := store.NewBoltStore(config.DBPath())
+		s, err := store.OpenBoltStore(config.DBPath())
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}
