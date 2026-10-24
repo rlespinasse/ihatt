@@ -59,7 +59,11 @@ GitHub sync uses the [`gh`](https://cli.github.com/) credentials, so make sure
 you've run `gh auth login` if you plan to use `ihatt github sync`.
 
 GitLab sync works the same way with the [`glab`](https://gitlab.com/gitlab-org/cli) CLI:
-run `glab auth login` before `ihatt gitlab sync`. Only gitlab.com is supported for now.
+run `glab auth login` before `ihatt gitlab sync`.
+
+Self-hosted instances (GitHub Enterprise, self-hosted GitLab) are listed under `forges` in
+the config file (see [Configuration](#configuration)). Log in to each one separately, for example
+`gh auth login --hostname github.acme.io` or `glab auth login --hostname git.acme.io`.
 
 ### What forge sync stores
 
@@ -101,6 +105,10 @@ issues and PRs/MRs only: `--provider github|gitlab`, `--state open|closed|merged
 
 ## Commands
 
+Commands that act on tracked repos (`sync`, `github sync`, `gitlab sync`, `xref`, `search`)
+follow the working directory: run them inside a tracked repo and only that repo is used. Pass
+`--repo <name>` to pick another one, or `--all` to act on every tracked repo.
+
 | Command | Purpose |
 | --- | --- |
 | `ihatt init` | Create config dir, data dir, and an empty database. |
@@ -112,8 +120,9 @@ issues and PRs/MRs only: `--provider github|gitlab`, `--state open|closed|merged
 | `ihatt at <date>` | Activity on a specific date — accepts `2024-03-15`, `march 5`, etc. |
 | `ihatt range <from> <to>` | Activity within an inclusive time range. |
 | `ihatt search <query> [--author X] [--repo R] [--since D] [--until D]` | Search commit messages, authors, and files, plus synced issue/PR/MR comments. |
-| `ihatt github sync [--repo R] [--full] [--with-comments]` | Pull issues, PRs, CI runs for tracked GitHub repos (uses `gh`). |
-| `ihatt gitlab sync [--repo R] [--full] [--with-comments]` | Pull issues, MRs, pipelines for tracked gitlab.com repos (uses `glab`). |
+| `ihatt sync [--repo R] [--all] [--full] [--with-comments]` | Index commits, then sync GitHub and GitLab data, for the repos in scope. |
+| `ihatt github sync [--repo R] [--full] [--with-comments]` | Pull issues, PRs, CI runs for tracked GitHub repos on github.com or a configured host (uses `gh`). |
+| `ihatt gitlab sync [--repo R] [--full] [--with-comments]` | Pull issues, MRs, pipelines for tracked GitLab repos on gitlab.com or a configured host (uses `glab`). |
 | `ihatt xref [--repo R]` | Build the cross-reference graph between tracked repos (commits referencing issues, PRs, MRs `!N` or SHAs). |
 | `ihatt links <repo>` | Show inbound and outbound cross-references for one repo. |
 | `ihatt tui` | Launch the interactive Bubble Tea UI. |
@@ -153,10 +162,24 @@ Run `ihatt <command> --help` for the full flag list of any command.
 scan_roots:
   - /Users/me/code
   - /Users/me/work
+forges:
+  - host: github.acme.io
+    kind: github
+  - host: git.acme.io
+    kind: gitlab
 ```
 
 `scan_roots` is also populated automatically the first time you run
 `ihatt scan --root <path>`.
+
+`forges` maps a host to its kind: `github`, `gitlab` or `unsupported`. The kind is detected from
+the hostname: a host containing `github` is GitHub, one containing `gitlab` is GitLab (so
+`github.com`, `github.acme.io` and `git.gitlab.acme.io` need no entry).
+
+For any other host, the sync commands ask on an interactive terminal whether it is `github`,
+`gitlab` or `unsupported`, and save the answer under `forges`. Without a terminal (cron, CI),
+those repos are skipped with a message naming the host; add the host to `forges` to classify
+it ahead of time. Hosts marked `unsupported` are skipped silently after that.
 
 Run `just paths` to print the resolved locations on your machine.
 

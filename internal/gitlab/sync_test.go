@@ -39,7 +39,7 @@ func TestMergeSHAPrefersSquash(t *testing.T) {
 }
 
 func TestProjectPathEncodesAndIncrements(t *testing.T) {
-	full := projectPath("group/sub", "proj", "issues", forge.Plan{})
+	full := projectPath(forge.Remote{Owner: "group/sub", Repo: "proj"}, "issues", forge.Plan{})
 	if want := "projects/group%2Fsub%2Fproj/issues?"; full[:len(want)] != want {
 		t.Errorf("path = %q, want prefix %q", full, want)
 	}
