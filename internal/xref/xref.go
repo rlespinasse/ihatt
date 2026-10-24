@@ -14,10 +14,13 @@ var (
 	reFullRef = regexp.MustCompile(`([a-zA-Z0-9_.-]+)/([a-zA-Z0-9_.-]+)#(\d+)`)
 	// Matches #123 (same-repo reference)
 	reLocalRef = regexp.MustCompile(`(?:^|\s)#(\d+)(?:\s|$|[,.)])`)
+	// Matches !123 (GitLab merge request, same-repo reference)
+	reMRRef = regexp.MustCompile(`(?:^|[\s(])!(\d+)(?:\s|$|[,.)])`)
 )
 
 // DetectFromCommit analyzes a commit message for cross-references.
-func DetectFromCommit(commit *model.Commit, repos []*model.Repository) []*model.CrossReference {
+// mrRefs enables !N merge request references, which only GitLab repos use.
+func DetectFromCommit(commit *model.Commit, repos []*model.Repository, mrRefs bool) []*model.CrossReference {
 	var xrefs []*model.CrossReference
 	msg := commit.Message
 
@@ -81,11 +84,26 @@ func DetectFromCommit(commit *model.Commit, repos []*model.Repository) []*model.
 		})
 	}
 
+	if mrRefs {
+		for _, match := range reMRRef.FindAllStringSubmatch(msg, -1) {
+			xrefs = append(xrefs, &model.CrossReference{
+				SourceRepoID: commit.RepoID,
+				SourceType:   "commit",
+				SourceID:     commit.Hash,
+				TargetRepoID: commit.RepoID,
+				TargetType:   "pr",
+				TargetID:     match[1],
+				Date:         commit.Date,
+			})
+		}
+	}
+
 	return xrefs
 }
 
 // AnalyzeRepo finds cross-references in all commits for a repo.
-func AnalyzeRepo(s store.Store, repoID string, allRepos []*model.Repository) (int, error) {
+// mrRefs enables !N merge request references for GitLab repos.
+func AnalyzeRepo(s store.Store, repoID string, allRepos []*model.Repository, mrRefs bool) (int, error) {
 	commits, err := s.GetCommitsByRepo(repoID, 0)
 	if err != nil {
 		return 0, fmt.Errorf("get commits: %w", err)
@@ -93,7 +111,7 @@ func AnalyzeRepo(s store.Store, repoID string, allRepos []*model.Repository) (in
 
 	count := 0
 	for _, commit := range commits {
-		xrefs := DetectFromCommit(commit, allRepos)
+		xrefs := DetectFromCommit(commit, allRepos, mrRefs)
 		for _, xref := range xrefs {
 			if err := s.PutCrossReference(xref); err != nil {
 				return count, err

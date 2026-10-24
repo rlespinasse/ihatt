@@ -64,6 +64,10 @@ scan *ROOTS:
 gh-sync:
     go run . github sync
 
+# Pull GitLab issues / MRs for tracked repos (uses glab auth).
+gitlab-sync:
+    go run . gitlab sync
+
 # Build the cross-reference graph between tracked repos.
 xref:
     go run . xref

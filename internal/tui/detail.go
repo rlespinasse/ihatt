@@ -22,6 +22,7 @@ type DetailModel struct {
 	repoNames     map[string]string
 	cursor        int
 	scroll        int
+	itemCursor    int // selected issue/PR, moved with n/p and opened with o
 	loaded        bool
 }
 
@@ -68,6 +69,7 @@ func (m *DetailModel) Update(msg tea.Msg) tea.Cmd {
 		m.repo = msg.repo
 		m.commits = msg.commits
 		m.ghItems = msg.ghItems
+		m.itemCursor = 0
 		m.xrefs = msg.xrefs
 		m.repoNames = msg.repoNames
 		m.loaded = true
@@ -87,6 +89,18 @@ func (m *DetailModel) Update(msg tea.Msg) tea.Cmd {
 			visibleRows := m.height - 6
 			if m.cursor >= m.scroll+visibleRows {
 				m.scroll = m.cursor - visibleRows + 1
+			}
+		case key.Matches(msg, Keys.NextItem):
+			if m.itemCursor < len(m.ghItems)-1 {
+				m.itemCursor++
+			}
+		case key.Matches(msg, Keys.PrevItem):
+			if m.itemCursor > 0 {
+				m.itemCursor--
+			}
+		case key.Matches(msg, Keys.OpenItem):
+			if m.itemCursor < len(m.ghItems) {
+				_ = openURL(m.ghItems[m.itemCursor].URL)
 			}
 		}
 	}
@@ -153,13 +167,13 @@ func (m *DetailModel) View() string {
 		sb.WriteString(line + "\n")
 	}
 
-	// GitHub items
+	// Forge items (GitHub issues/PRs, GitLab issues/MRs)
 	if len(m.ghItems) > 0 {
 		sb.WriteString("\n")
-		sb.WriteString(StyleSubtitle.Render(fmt.Sprintf("GitHub (%d)", len(m.ghItems))))
+		sb.WriteString(StyleSubtitle.Render(fmt.Sprintf("Issues & PRs (%d)", len(m.ghItems))))
 		sb.WriteString("\n")
 
-		for _, item := range m.ghItems {
+		for i, item := range m.ghItems {
 			var style lipgloss.Style
 			switch {
 			case item.State == "merged":
@@ -175,9 +189,13 @@ func (m *DetailModel) View() string {
 				title = title[:57] + "..."
 			}
 
-			typeLabel := strings.ToUpper(item.Type)
-			sb.WriteString(fmt.Sprintf("  %s #%-4d [%s] %s\n",
-				style.Render(typeLabel),
+			prefix := "  "
+			if i == m.itemCursor {
+				prefix = "> "
+			}
+			sb.WriteString(fmt.Sprintf("%s%s #%-4d [%s] %s\n",
+				prefix,
+				style.Render(item.TypeLabel()),
 				item.Number,
 				item.State,
 				title,

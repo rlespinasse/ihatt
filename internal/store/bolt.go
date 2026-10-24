@@ -18,6 +18,10 @@ var (
 	bucketCommits     = []byte("commits")
 	bucketGitHubItems = []byte("github_items")
 	bucketXRefs       = []byte("xrefs")
+	bucketSyncState   = []byte("sync_state")
+	bucketTags        = []byte("tags")
+	bucketCIRuns      = []byte("ci_runs")
+	bucketComments    = []byte("comments")
 )
 
 type BoltStore struct {
@@ -41,7 +45,7 @@ func NewBoltStore(path string) (*BoltStore, error) {
 	}
 
 	err = db.Update(func(tx *bolt.Tx) error {
-		for _, b := range [][]byte{bucketRepos, bucketCommits, bucketGitHubItems, bucketXRefs} {
+		for _, b := range [][]byte{bucketRepos, bucketCommits, bucketGitHubItems, bucketXRefs, bucketSyncState, bucketTags, bucketCIRuns, bucketComments} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return err
 			}
@@ -268,6 +272,123 @@ func (s *BoltStore) GetGitHubItemsByRepo(repoID string) ([]*model.GitHubItem, er
 		return nil
 	})
 	return items, err
+}
+
+// --- Tags ---
+
+func (s *BoltStore) PutTag(tag *model.Tag) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		data, err := json.Marshal(tag)
+		if err != nil {
+			return err
+		}
+		return tx.Bucket(bucketTags).Put([]byte(tag.RepoID+":"+tag.Name), data)
+	})
+}
+
+func (s *BoltStore) GetTagsByRepo(repoID string) ([]*model.Tag, error) {
+	var tags []*model.Tag
+	prefix := []byte(repoID + ":")
+	err := s.db.View(func(tx *bolt.Tx) error {
+		c := tx.Bucket(bucketTags).Cursor()
+		for k, v := c.Seek(prefix); k != nil && strings.HasPrefix(string(k), string(prefix)); k, v = c.Next() {
+			var tag model.Tag
+			if err := json.Unmarshal(v, &tag); err != nil {
+				return err
+			}
+			tags = append(tags, &tag)
+		}
+		return nil
+	})
+	return tags, err
+}
+
+// --- CI runs ---
+
+func (s *BoltStore) PutCIRun(run *model.CIRun) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		data, err := json.Marshal(run)
+		if err != nil {
+			return err
+		}
+		return tx.Bucket(bucketCIRuns).Put([]byte(run.RepoID+":"+run.Provider+":"+run.ID), data)
+	})
+}
+
+func (s *BoltStore) GetCIRunsByRepo(repoID string) ([]*model.CIRun, error) {
+	var runs []*model.CIRun
+	prefix := []byte(repoID + ":")
+	err := s.db.View(func(tx *bolt.Tx) error {
+		c := tx.Bucket(bucketCIRuns).Cursor()
+		for k, v := c.Seek(prefix); k != nil && strings.HasPrefix(string(k), string(prefix)); k, v = c.Next() {
+			var run model.CIRun
+			if err := json.Unmarshal(v, &run); err != nil {
+				return err
+			}
+			runs = append(runs, &run)
+		}
+		return nil
+	})
+	return runs, err
+}
+
+// --- Comments ---
+
+func commentKey(c *model.Comment) string {
+	return fmt.Sprintf("%s:%s:%s:%d:%s", c.RepoID, c.Provider, c.ItemType, c.ItemNumber, c.ID)
+}
+
+func (s *BoltStore) PutComment(c *model.Comment) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		data, err := json.Marshal(c)
+		if err != nil {
+			return err
+		}
+		return tx.Bucket(bucketComments).Put([]byte(commentKey(c)), data)
+	})
+}
+
+func (s *BoltStore) GetCommentsByRepo(repoID string) ([]*model.Comment, error) {
+	var comments []*model.Comment
+	prefix := []byte(repoID + ":")
+	err := s.db.View(func(tx *bolt.Tx) error {
+		c := tx.Bucket(bucketComments).Cursor()
+		for k, v := c.Seek(prefix); k != nil && strings.HasPrefix(string(k), string(prefix)); k, v = c.Next() {
+			var comment model.Comment
+			if err := json.Unmarshal(v, &comment); err != nil {
+				return err
+			}
+			comments = append(comments, &comment)
+		}
+		return nil
+	})
+	return comments, err
+}
+
+// --- Sync State ---
+
+// GetSyncState returns the sync state stored under key, or nil if none exists.
+func (s *BoltStore) GetSyncState(key string) (*model.SyncState, error) {
+	var state *model.SyncState
+	err := s.db.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bucketSyncState).Get([]byte(key))
+		if v == nil {
+			return nil
+		}
+		state = &model.SyncState{}
+		return json.Unmarshal(v, state)
+	})
+	return state, err
+}
+
+func (s *BoltStore) PutSyncState(key string, state *model.SyncState) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		data, err := json.Marshal(state)
+		if err != nil {
+			return err
+		}
+		return tx.Bucket(bucketSyncState).Put([]byte(key), data)
+	})
 }
 
 // --- Cross-References ---

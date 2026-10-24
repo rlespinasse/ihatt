@@ -9,6 +9,7 @@ import (
 	"time"
 
 	gogit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/rlespinasse/ihatt/internal/model"
 	"github.com/rlespinasse/ihatt/internal/store"
@@ -135,6 +136,10 @@ func IndexRepo(s store.Store, repo *model.Repository) (int, error) {
 		return nil
 	})
 
+	if err := indexTags(s, r, repo.ID); err != nil {
+		return count, err
+	}
+
 	repo.LastScan = time.Now()
 	if err2 := s.PutRepo(repo); err2 != nil {
 		return count, err2
@@ -160,4 +165,33 @@ func GetRemoteURL(repoPath string) (string, error) {
 		return "", fmt.Errorf("no URLs for origin remote")
 	}
 	return urls[0], nil
+}
+
+// indexTags stores every tag, resolved to the commit it points at.
+// Annotated tags are dereferenced; lightweight tags already point at a commit.
+func indexTags(s store.Store, r *gogit.Repository, repoID string) error {
+	refs, err := r.Tags()
+	if err != nil {
+		return fmt.Errorf("list tags: %w", err)
+	}
+	return refs.ForEach(func(ref *plumbing.Reference) error {
+		tag := &model.Tag{
+			RepoID: repoID,
+			Name:   ref.Name().Short(),
+			Commit: ref.Hash().String(),
+		}
+		if tagObj, err := r.TagObject(ref.Hash()); err == nil {
+			commit, err := tagObj.Commit()
+			if err != nil {
+				return nil // tag points at a non-commit object; nothing to link
+			}
+			tag.Commit = commit.Hash.String()
+			tag.Date = tagObj.Tagger.When
+		} else if commit, err := r.CommitObject(ref.Hash()); err == nil {
+			tag.Date = commit.Author.When
+		} else {
+			return nil
+		}
+		return s.PutTag(tag)
+	})
 }

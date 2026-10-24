@@ -12,12 +12,27 @@ type KeyMap struct {
 	Timeline  key.Binding
 	Dashboard key.Binding
 	Links     key.Binding
+	NextItem  key.Binding
+	PrevItem  key.Binding
+	OpenItem  key.Binding
 	Refresh   key.Binding
 	Quit      key.Binding
 	Help      key.Binding
 }
 
 var Keys = KeyMap{
+	NextItem: key.NewBinding(
+		key.WithKeys("n"),
+		key.WithHelp("n", "next issue/PR"),
+	),
+	PrevItem: key.NewBinding(
+		key.WithKeys("p"),
+		key.WithHelp("p", "previous issue/PR"),
+	),
+	OpenItem: key.NewBinding(
+		key.WithKeys("o"),
+		key.WithHelp("o", "open issue/PR in browser"),
+	),
 	Up: key.NewBinding(
 		key.WithKeys("up", "k"),
 		key.WithHelp("k/up", "up"),
