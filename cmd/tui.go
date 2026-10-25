@@ -14,17 +14,22 @@ var tuiCmd = &cobra.Command{
 	Use:   "tui",
 	Short: "Launch the interactive TUI",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := store.OpenBoltStore(config.DBPath())
-		if err != nil {
-			return fmt.Errorf("open database: %w", err)
-		}
-		defer s.Close()
-
-		app := tui.NewApp(s)
-		p := tea.NewProgram(app, tea.WithAltScreen())
-		_, err = p.Run()
-		return err
+		return runTUI()
 	},
+}
+
+// runTUI opens the tracked-repos database and runs the interactive TUI in the alternate screen.
+func runTUI() error {
+	s, err := store.OpenBoltStore(config.DBPath())
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer s.Close()
+
+	app := tui.NewApp(s)
+	p := tea.NewProgram(app, tea.WithAltScreen())
+	_, err = p.Run()
+	return err
 }
 
 func init() {
