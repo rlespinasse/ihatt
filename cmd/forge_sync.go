@@ -22,35 +22,44 @@ import (
 // forgeSyncFunc syncs issues, PRs/MRs and CI runs of one repo and returns their counts.
 type forgeSyncFunc func(s store.Store, repoID string, r forge.Remote, opts forge.Options) (int, int, int, error)
 
-// forgeKinds maps each configured forge host to its kind, "github" or "gitlab".
-// The config's forges list adds hosts or overrides the built-in ones.
-func forgeKinds(cfg *config.Config) (map[string]string, error) {
-	kinds := map[string]string{"github.com": "github", "gitlab.com": "gitlab"}
+// forgeHost is how ihatt treats one forge host.
+type forgeHost struct {
+	Kind    string // "github", "gitlab" or "unsupported"
+	APIHost string // host that serves the API, when it differs from the remote's host
+}
+
+// forgeHosts maps each configured forge host to its settings.
+type forgeHosts map[string]forgeHost
+
+// forgeHostsFrom builds the host table: built-in hosts, then the config's forges list,
+// which adds hosts or overrides the built-in ones.
+func forgeHostsFrom(cfg *config.Config) (forgeHosts, error) {
+	hosts := forgeHosts{"github.com": {Kind: "github"}, "gitlab.com": {Kind: "gitlab"}}
 	for _, f := range cfg.Forges {
 		if !validForgeKind(f.Kind) {
 			return nil, fmt.Errorf("forge %s: kind must be \"github\", \"gitlab\" or \"unsupported\", got %q", f.Host, f.Kind)
 		}
-		kinds[strings.ToLower(f.Host)] = f.Kind
+		hosts[strings.ToLower(f.Host)] = forgeHost{Kind: f.Kind, APIHost: strings.ToLower(f.APIHost)}
 	}
-	return kinds, nil
+	return hosts, nil
 }
 
-// hostKind returns the kind of a forge host: the configured kind when the host
-// is listed, otherwise the kind named in the hostname. ok is false when neither
+// lookupHost returns how a remote host is treated: the configured settings when the
+// host is listed, otherwise the kind named in the hostname. ok is false when neither
 // applies, or when the hostname names both forges.
-func hostKind(kinds map[string]string, host string) (kind string, ok bool) {
-	if kind, ok := kinds[host]; ok {
-		return kind, true
+func lookupHost(hosts forgeHosts, host string) (fh forgeHost, ok bool) {
+	if fh, ok := hosts[host]; ok {
+		return fh, true
 	}
 	hasGitHub := strings.Contains(host, "github")
 	hasGitLab := strings.Contains(host, "gitlab")
 	switch {
 	case hasGitHub && !hasGitLab:
-		return "github", true
+		return forgeHost{Kind: "github"}, true
 	case hasGitLab && !hasGitHub:
-		return "gitlab", true
+		return forgeHost{Kind: "gitlab"}, true
 	}
-	return "", false
+	return forgeHost{}, false
 }
 
 // syncerFor returns the forge client that syncs hosts of one kind.
@@ -73,7 +82,7 @@ func runSync(cmd *cobra.Command, commits bool, kinds ...string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	hostKinds, err := forgeKinds(cfg)
+	hosts, err := forgeHostsFrom(cfg)
 	if err != nil {
 		return err
 	}
@@ -96,7 +105,7 @@ func runSync(cmd *cobra.Command, commits bool, kinds ...string) error {
 	repoFilter, scope := repoScope(cmd, repos)
 	fmt.Printf("Scope: %s\n", scope)
 
-	hostKinds, err = classifyUnknownHosts(cfg, hostKinds, repoFilter, repos)
+	hosts, err = classifyUnknownHosts(cfg, hosts, repoFilter, repos)
 	if err != nil {
 		return err
 	}
@@ -126,26 +135,29 @@ func runSync(cmd *cobra.Command, commits bool, kinds ...string) error {
 			fmt.Printf("  %-40s SKIP forge (not a git remote)\n", repo.Name)
 			continue
 		}
-		hk, known := hostKind(hostKinds, r.Host)
+		fh, known := lookupHost(hosts, r.Host)
 		switch {
 		case !known:
 			fmt.Printf("  %-40s SKIP forge (unknown host %s; add it under forges in config)\n", repo.Name, r.Host)
 			continue
-		case hk == "unsupported":
+		case fh.Kind == "unsupported":
 			fmt.Printf("  %-40s SKIP forge (unsupported forge %s)\n", repo.Name, r.Host)
 			continue
-		case !slices.Contains(kinds, hk):
+		case !slices.Contains(kinds, fh.Kind):
 			fmt.Printf("  %-40s SKIP forge (not a %s repo)\n", repo.Name, forgeLabels(kinds))
 			continue
 		}
 
+		if fh.APIHost != "" {
+			r.Host = fh.APIHost
+		}
 		fmt.Printf("  %-40s syncing %s/%s/%s...\n", repo.Name, r.Host, r.Owner, r.Repo)
-		issues, prs, runs, err := syncerFor(hk)(s, repo.ID, r, opts)
+		issues, prs, runs, err := syncerFor(fh.Kind)(s, repo.ID, r, opts)
 		if err != nil {
 			fmt.Printf("  %-40s ERROR: %v\n", repo.Name, err)
 			continue
 		}
-		fmt.Printf("  %-40s %d issues, %d %s, %d CI runs\n", repo.Name, issues, prs, prNoun(hk), runs)
+		fmt.Printf("  %-40s %d issues, %d %s, %d CI runs\n", repo.Name, issues, prs, prNoun(fh.Kind), runs)
 	}
 
 	return nil
@@ -158,7 +170,7 @@ func validForgeKind(kind string) bool {
 // classifyUnknownHosts asks, on an interactive terminal, which kind each
 // unlisted forge host is, and saves the answers under forges in the config.
 // Without a terminal the hosts stay unknown and their repos are skipped.
-func classifyUnknownHosts(cfg *config.Config, kinds map[string]string, repoFilter string, repos []*model.Repository) (map[string]string, error) {
+func classifyUnknownHosts(cfg *config.Config, hosts forgeHosts, repoFilter string, repos []*model.Repository) (forgeHosts, error) {
 	var unknown []string
 	seen := map[string]bool{}
 	for _, repo := range repos {
@@ -173,7 +185,7 @@ func classifyUnknownHosts(cfg *config.Config, kinds map[string]string, repoFilte
 		if err != nil {
 			continue
 		}
-		if _, known := hostKind(kinds, r.Host); known || seen[r.Host] {
+		if _, known := lookupHost(hosts, r.Host); known || seen[r.Host] {
 			continue
 		}
 		seen[r.Host] = true
@@ -181,7 +193,7 @@ func classifyUnknownHosts(cfg *config.Config, kinds map[string]string, repoFilte
 	}
 
 	if len(unknown) == 0 || !isTerminal() {
-		return kinds, nil
+		return hosts, nil
 	}
 
 	in := bufio.NewReader(os.Stdin)
@@ -190,13 +202,13 @@ func classifyUnknownHosts(cfg *config.Config, kinds map[string]string, repoFilte
 		if kind == "" {
 			continue
 		}
-		kinds[host] = kind
+		hosts[host] = forgeHost{Kind: kind}
 		cfg.Forges = append(cfg.Forges, config.Forge{Host: host, Kind: kind})
 	}
 	if err := config.Save(cfg); err != nil {
-		return kinds, fmt.Errorf("save forges: %w", err)
+		return hosts, fmt.Errorf("save forges: %w", err)
 	}
-	return kinds, nil
+	return hosts, nil
 }
 
 // askForgeKind prompts until the answer is a known kind. An empty answer skips

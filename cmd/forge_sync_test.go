@@ -1,9 +1,18 @@
 package cmd
 
-import "testing"
+import (
+	"testing"
 
-func TestHostKind(t *testing.T) {
-	kinds := map[string]string{"github.com": "github", "git.acme.io": "gitlab", "code.acme.io": "github"}
+	"github.com/rlespinasse/ihatt/internal/config"
+)
+
+func TestLookupHost(t *testing.T) {
+	hosts := forgeHosts{
+		"github.com":          {Kind: "github"},
+		"git.acme.io":         {Kind: "gitlab"},
+		"code.acme.io":        {Kind: "github"},
+		"ssh.sources.acme.io": {Kind: "gitlab", APIHost: "sources.acme.io"},
+	}
 	tests := []struct {
 		host     string
 		wantKind string
@@ -18,9 +27,21 @@ func TestHostKind(t *testing.T) {
 		{"gitlab-github.acme.io", "", false},
 	}
 	for _, tt := range tests {
-		kind, ok := hostKind(kinds, tt.host)
-		if kind != tt.wantKind || ok != tt.wantOK {
-			t.Errorf("hostKind(%q) = (%q, %v), want (%q, %v)", tt.host, kind, ok, tt.wantKind, tt.wantOK)
+		fh, ok := lookupHost(hosts, tt.host)
+		if fh.Kind != tt.wantKind || ok != tt.wantOK {
+			t.Errorf("lookupHost(%q) = (%q, %v), want (%q, %v)", tt.host, fh.Kind, ok, tt.wantKind, tt.wantOK)
 		}
+	}
+}
+
+func TestForgeHostsFromKeepsAPIHost(t *testing.T) {
+	cfg := &config.Config{Forges: []config.Forge{{Host: "SSH.Sources.Acme.io", Kind: "gitlab", APIHost: "Sources.Acme.io"}}}
+	hosts, err := forgeHostsFrom(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fh, ok := lookupHost(hosts, "ssh.sources.acme.io")
+	if !ok || fh.Kind != "gitlab" || fh.APIHost != "sources.acme.io" {
+		t.Errorf("got (%+v, %v), want gitlab with API host sources.acme.io", fh, ok)
 	}
 }

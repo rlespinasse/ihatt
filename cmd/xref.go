@@ -37,7 +37,7 @@ var xrefCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
-		kinds, err := forgeKinds(cfg)
+		hosts, err := forgeHostsFrom(cfg)
 		if err != nil {
 			return err
 		}
@@ -51,8 +51,8 @@ var xrefCmd = &cobra.Command{
 			mrRefs := false
 			if remoteURL, err := gitscanner.GetRemoteURL(repo.Path); err == nil {
 				if r, err := forge.ParseRemote(remoteURL); err == nil {
-					kind, _ := hostKind(kinds, r.Host)
-					mrRefs = kind == "gitlab"
+					fh, _ := lookupHost(hosts, r.Host)
+					mrRefs = fh.Kind == "gitlab"
 				}
 			}
 
