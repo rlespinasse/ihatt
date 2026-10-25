@@ -30,7 +30,7 @@ var xrefCmd = &cobra.Command{
 			return fmt.Errorf("no repositories tracked")
 		}
 
-		repoFilter, scope := repoScope(cmd, repos)
+		inScope, scope := repoScope(cmd, repos)
 		fmt.Printf("Scope: %s\n", scope)
 
 		cfg, err := config.Load()
@@ -44,7 +44,7 @@ var xrefCmd = &cobra.Command{
 
 		totalXrefs := 0
 		for _, repo := range repos {
-			if repoFilter != "" && repo.Name != repoFilter && repo.ID != repoFilter {
+			if !inScope(repo) {
 				continue
 			}
 

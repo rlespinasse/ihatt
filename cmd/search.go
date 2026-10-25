@@ -9,6 +9,7 @@ import (
 
 	"github.com/araddon/dateparse"
 	"github.com/rlespinasse/ihatt/internal/config"
+	"github.com/rlespinasse/ihatt/internal/model"
 	"github.com/rlespinasse/ihatt/internal/query"
 	"github.com/rlespinasse/ihatt/internal/store"
 	"github.com/spf13/cobra"
@@ -46,30 +47,40 @@ var searchCmd = &cobra.Command{
 			toTime = &t
 		}
 
-		// Resolve the repo scope (--repo, the current repo, or all) to an ID
-		repoID := ""
+		// Resolve the repo scope (--repo, --dir, the current repo or folder, or all) to repo IDs
 		repos, _ := s.ListRepos()
-		if repo, scope := repoScope(cmd, repos); repo != "" {
-			for _, r := range repos {
-				if r.Name == repo || r.ID == repo {
-					repoID = r.ID
-					break
-				}
+		inScope, scope := repoScope(cmd, repos)
+		repoIDs := map[string]bool{}
+		for _, r := range repos {
+			if inScope(r) {
+				repoIDs[r.ID] = true
 			}
-			if repoID == "" {
-				return fmt.Errorf("repository not found: %s", repo)
-			}
-			fmt.Fprintf(os.Stderr, "Scope: %s\n", scope)
 		}
+		if name, _ := cmd.Flags().GetString("repo"); name != "" && len(repoIDs) == 0 {
+			return fmt.Errorf("repository not found: %s", name)
+		}
+		fmt.Fprintf(os.Stderr, "Scope: %s\n", scope)
 
-		commits, err := s.SearchCommits(q, fromTime, toTime, author, repoID)
+		allCommits, err := s.SearchCommits(q, fromTime, toTime, author, "")
 		if err != nil {
 			return err
 		}
+		var commits []*model.Commit
+		for _, c := range allCommits {
+			if repoIDs[c.RepoID] {
+				commits = append(commits, c)
+			}
+		}
 
-		comments, err := query.SearchComments(s, q, repoID)
+		allComments, err := query.SearchComments(s, q, "")
 		if err != nil {
 			return err
+		}
+		var comments []*model.Comment
+		for _, c := range allComments {
+			if repoIDs[c.RepoID] {
+				comments = append(comments, c)
+			}
 		}
 
 		if len(commits) == 0 && len(comments) == 0 {

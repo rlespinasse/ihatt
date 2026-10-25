@@ -102,16 +102,16 @@ func runSync(cmd *cobra.Command, commits bool, kinds ...string) error {
 		return fmt.Errorf("no repositories tracked; use 'ihatt scan' or 'ihatt repo add' first")
 	}
 
-	repoFilter, scope := repoScope(cmd, repos)
+	inScope, scope := repoScope(cmd, repos)
 	fmt.Printf("Scope: %s\n", scope)
 
-	hosts, err = classifyUnknownHosts(cfg, hosts, repoFilter, repos)
+	hosts, err = classifyUnknownHosts(cfg, hosts, inScope, repos)
 	if err != nil {
 		return err
 	}
 
 	for _, repo := range repos {
-		if repoFilter != "" && repo.Name != repoFilter && repo.ID != repoFilter {
+		if !inScope(repo) {
 			continue
 		}
 
@@ -170,11 +170,11 @@ func validForgeKind(kind string) bool {
 // classifyUnknownHosts asks, on an interactive terminal, which kind each
 // unlisted forge host is, and saves the answers under forges in the config.
 // Without a terminal the hosts stay unknown and their repos are skipped.
-func classifyUnknownHosts(cfg *config.Config, hosts forgeHosts, repoFilter string, repos []*model.Repository) (forgeHosts, error) {
+func classifyUnknownHosts(cfg *config.Config, hosts forgeHosts, inScope repoMatch, repos []*model.Repository) (forgeHosts, error) {
 	var unknown []string
 	seen := map[string]bool{}
 	for _, repo := range repos {
-		if repoFilter != "" && repo.Name != repoFilter && repo.ID != repoFilter {
+		if !inScope(repo) {
 			continue
 		}
 		remoteURL, err := gitscanner.GetRemoteURL(repo.Path)
