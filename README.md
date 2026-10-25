@@ -126,6 +126,7 @@ follow the working directory: run them inside a tracked repo and only that repo 
 | `ihatt xref [--repo R]` | Build the cross-reference graph between tracked repos (commits referencing issues, PRs, MRs `!N` or SHAs). |
 | `ihatt links <repo>` | Show inbound and outbound cross-references for one repo. |
 | `ihatt tui` | Launch the interactive Bubble Tea UI. |
+| `ihatt` | Open the TUI on a terminal, print help otherwise. `--tui` forces the TUI, `--no-tui` forces help. |
 
 Run `ihatt <command> --help` for the full flag list of any command.
 

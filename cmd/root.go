@@ -18,7 +18,21 @@ your local git repositories at any point in time.
 Answer questions like:
   - What was I working on last Tuesday?
   - What changed across all my projects this week?
-  - Show me everything that happened on March 5th.`,
+  - Show me everything that happened on March 5th.
+
+Without a subcommand, ihatt opens the interactive TUI on a terminal and prints
+this help otherwise. Use --tui or --no-tui to choose explicitly.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		tui, err := useTUI(cmd)
+		if err != nil {
+			return err
+		}
+		if !tui {
+			return cmd.Help()
+		}
+		return runTUI()
+	},
 }
 
 func Execute() {
@@ -30,4 +44,5 @@ func Execute() {
 
 func init() {
 	rootCmd.Version = version
+	addOutputFlags(rootCmd)
 }
