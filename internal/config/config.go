@@ -13,10 +13,13 @@ type Config struct {
 }
 
 // Forge maps a forge host to its kind: "github", "gitlab", or "unsupported" for
-// hosts ihatt skips. github.com and gitlab.com need no entry.
+// hosts ihatt skips. github.com and gitlab.com need no entry. APIHost is set when the
+// remote's host (often an SSH host) does not serve the API, e.g. ssh.example.com for
+// example.com.
 type Forge struct {
-	Host string `mapstructure:"host"`
-	Kind string `mapstructure:"kind"`
+	Host    string `mapstructure:"host"`
+	Kind    string `mapstructure:"kind"`
+	APIHost string `mapstructure:"api_host"`
 }
 
 func ConfigDir() string {
@@ -74,7 +77,11 @@ func Save(cfg *Config) error {
 
 	forges := make([]map[string]string, 0, len(cfg.Forges))
 	for _, f := range cfg.Forges {
-		forges = append(forges, map[string]string{"host": f.Host, "kind": f.Kind})
+		entry := map[string]string{"host": f.Host, "kind": f.Kind}
+		if f.APIHost != "" {
+			entry["api_host"] = f.APIHost
+		}
+		forges = append(forges, entry)
 	}
 	v.Set("forges", forges)
 

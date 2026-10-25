@@ -167,6 +167,9 @@ forges:
     kind: github
   - host: git.acme.io
     kind: gitlab
+  - host: ssh.gitlab.acme.io      # remote host (SSH)
+    kind: gitlab
+    api_host: gitlab.acme.io      # host that serves the API, when different
 ```
 
 `scan_roots` is also populated automatically the first time you run
@@ -175,6 +178,9 @@ forges:
 `forges` maps a host to its kind: `github`, `gitlab` or `unsupported`. The kind is detected from
 the hostname: a host containing `github` is GitHub, one containing `gitlab` is GitLab (so
 `github.com`, `github.acme.io` and `git.gitlab.acme.io` need no entry).
+
+Set `api_host` when the remote host does not serve the API, which is common when remotes use
+an SSH host such as `ssh.<host>`. Login is then done on `api_host`, not on the remote host.
 
 For any other host, the sync commands ask on an interactive terminal whether it is `github`,
 `gitlab` or `unsupported`, and save the answer under `forges`. Without a terminal (cron, CI),
